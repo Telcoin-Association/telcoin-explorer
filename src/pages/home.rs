@@ -8,7 +8,7 @@ use crate::services::rpc::{
 };
 use crate::components::loading::{Loading, ErrorBox, AddrDisplay};
 
-const VERSION: &str = "v0.1.8";
+const VERSION: &str = "v0.1.9";
 
 #[component]
 pub fn HomePage() -> Element {

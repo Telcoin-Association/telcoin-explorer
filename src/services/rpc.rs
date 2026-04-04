@@ -917,3 +917,72 @@ pub async fn get_contract_info(address: &str) -> Result<ContractInfo, String> {
         has_mint,
     })
 }
+
+// ─── 4byte.directory selector lookup ─────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct FunctionSignature {
+    pub selector: String,   // e.g. "8da5cb5b"
+    pub signature: String,  // e.g. "owner()"
+}
+
+/// Extract all unique 4-byte selectors from bytecode
+/// Looks for PUSH4 opcode (0x63) followed by 4 bytes
+pub fn extract_selectors(bytecode_hex: &str) -> Vec<String> {
+    let bytes: Vec<u8> = (0..bytecode_hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(&bytecode_hex[i..i+2], 16).ok())
+        .collect();
+
+    let mut selectors: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut i = 0;
+    while i + 4 < bytes.len() {
+        // PUSH4 opcode = 0x63
+        if bytes[i] == 0x63 && i + 5 <= bytes.len() {
+            let sel = format!("{:02x}{:02x}{:02x}{:02x}",
+                bytes[i+1], bytes[i+2], bytes[i+3], bytes[i+4]);
+            // Filter out unlikely selectors (all zeros, all ff, etc.)
+            if sel != "00000000" && sel != "ffffffff" {
+                selectors.insert(sel);
+            }
+            i += 5;
+        } else {
+            i += 1;
+        }
+    }
+    let mut result: Vec<String> = selectors.into_iter().collect();
+    result.sort();
+    result
+}
+
+/// Look up a single selector at 4byte.directory
+pub async fn lookup_selector(selector: &str) -> Option<String> {
+    let url = format!("https://www.4byte.directory/api/v1/signatures/?hex_signature=0x{}", selector);
+    let client = gloo_net::http::Request::get(&url)
+        .header("Accept", "application/json")
+        .send().await.ok()?;
+    let text = client.text().await.ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    // Results are in json["results"][0]["text_signature"]
+    json["results"].as_array()?
+        .first()?
+        ["text_signature"].as_str()
+        .map(|s| s.to_string())
+}
+
+/// Resolve up to 30 selectors from bytecode via 4byte.directory
+pub async fn resolve_selectors(bytecode_hex: &str) -> Vec<FunctionSignature> {
+    let selectors = extract_selectors(bytecode_hex);
+    let mut results = Vec::new();
+    // Cap at 30 to avoid too many requests
+    for sel in selectors.iter().take(30) {
+        if let Some(sig) = lookup_selector(sel).await {
+            results.push(FunctionSignature {
+                selector: sel.clone(),
+                signature: sig,
+            });
+        }
+    }
+    results.sort_by(|a, b| a.signature.cmp(&b.signature));
+    results
+}

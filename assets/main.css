@@ -2229,3 +2229,69 @@ body { font-size: 15px; overflow-x: hidden; }
   align-items: center;
   gap: 10px;
 }
+
+/* ── CONTRACT BYTECODE / INTERFACE ──────────────────────────────────── */
+
+/* Unverified source banner */
+.bytecode-unverified-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+  border-left: 3px solid var(--accent-yellow);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.bub-icon {
+  color: var(--accent-yellow);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.bub-text { flex: 1; }
+
+/* Function signature table */
+.sig-table { width: 100%; }
+.sig-header {
+  display: grid;
+  grid-template-columns: 110px 1fr 70px;
+  padding: 10px 20px;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  gap: 12px;
+}
+.sig-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 70px;
+  padding: 11px 20px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  transition: background 0.12s;
+}
+.sig-row:last-child { border-bottom: none; }
+.sig-row:hover { background: rgba(45,206,255,0.03); }
+.sig-selector {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sig-name {
+  font-size: 12px;
+  word-break: break-all;
+}
+.sig-type { display: flex; align-items: center; }
+
+@media (max-width: 600px) {
+  .sig-header { grid-template-columns: 90px 1fr; }
+  .sig-row    { grid-template-columns: 90px 1fr; }
+  .sig-type   { display: none; }
+  .bytecode-unverified-banner { flex-direction: column; }
+}

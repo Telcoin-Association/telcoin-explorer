@@ -2,6 +2,7 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
+    resolve_selectors, FunctionSignature,
     get_contract_info, get_block_number, get_token_transfers,
     parse_transfer_logs, get_token_symbol, ContractInfo,
     TokenTransfer, shorten_hash, shorten_addr, unix_to_age,
@@ -15,6 +16,8 @@ pub fn ContractPage(address: String) -> Element {
     let transfers: Signal<Vec<TokenTransfer>>     = use_signal(|| vec![]);
     let loading  = use_signal(|| true);
     let error: Signal<Option<String>>             = use_signal(|| None);
+    let signatures: Signal<Vec<FunctionSignature>> = use_signal(|| vec![]);
+    let sigs_loading = use_signal(|| false);
     let active_tab = use_signal(|| "overview");
     let addr_clone = address.clone();
 
@@ -146,7 +149,29 @@ pub fn ContractPage(address: String) -> Element {
                     }
                     button {
                         class: if *active_tab.read() == "bytecode" { "tab-btn tab-active" } else { "tab-btn" },
-                        onclick: move |_| active_tab.clone().set("bytecode"),
+                        onclick: {
+                            let mut active_tab   = active_tab.clone();
+                            let mut signatures   = signatures.clone();
+                            let mut sigs_loading = sigs_loading.clone();
+                            let bytecode_hex = info.read().as_ref()
+                                .map(|c| c.bytecode_hex.clone())
+                                .unwrap_or_default();
+                            move |_| {
+                                active_tab.set("bytecode");
+                                // Only fetch once
+                                if signatures.read().is_empty() && !bytecode_hex.is_empty() {
+                                    let mut signatures   = signatures.clone();
+                                    let mut sigs_loading = sigs_loading.clone();
+                                    let hex = bytecode_hex.clone();
+                                    sigs_loading.set(true);
+                                    wasm_bindgen_futures::spawn_local(async move {
+                                        let sigs = resolve_selectors(&hex).await;
+                                        signatures.set(sigs);
+                                        sigs_loading.set(false);
+                                    });
+                                }
+                            }
+                        },
                         "Bytecode"
                     }
                     if is_registry {
@@ -350,74 +375,102 @@ pub fn ContractPage(address: String) -> Element {
 
                 // ── Bytecode tab ──────────────────────────────────────
                 if *active_tab.read() == "bytecode" {
+
+                    // ── Unverified source notice ─────────────────────
+                    div { class: "bytecode-unverified-banner",
+                        div { class: "bub-icon",
+                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none",
+                                stroke:"currentColor", stroke_width:"2",
+                                stroke_linecap:"round", stroke_linejoin:"round",
+                                path { d:"M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" }
+                                path { d:"M12 9v4m0 4h.01" }
+                            }
+                        }
+                        div { class: "bub-text",
+                            strong { "Source code not verified. " }
+                            "The Solidity source has not been submitted for verification. "
+                            "Function signatures below are resolved from the "
+                            a { href: "https://www.4byte.directory", target: "_blank", class: "hash-cell", "4byte.directory" }
+                            " public database and may not be complete. "
+                            "For full decompilation, use "
+                            a {
+                                href: format!("https://app.dedaub.com/decompile?md5={}", &contract.address),
+                                target: "_blank",
+                                class: "hash-cell",
+                                "Dedaub ↗"
+                            }
+                            " or "
+                            a {
+                                href: format!("https://ethervm.io/decompile?address={}&network=custom&rpc=https://rpc.telcoin.network", &contract.address),
+                                target: "_blank",
+                                class: "hash-cell",
+                                "EtherVM ↗"
+                            }
+                        }
+                    }
+
+                    // ── Resolved function signatures ─────────────────
+                    div { class: "detail-panel", style: "margin-bottom:16px;",
+                        div { class: "detail-panel-title",
+                            "Contract Interface"
+                            span { style: "font-size:11px; color:var(--text-muted); font-weight:400; margin-left:8px;",
+                                "(resolved from bytecode via 4byte.directory)"
+                            }
+                        }
+                        if *sigs_loading.read() {
+                            div { class: "loading-wrapper", style: "padding:24px;",
+                                div { class: "spinner" }
+                                span { class: "loading-text", "Resolving function signatures…" }
+                            }
+                        } else if signatures.read().is_empty() {
+                            div { class: "bytecode-notice",
+                                span { "No function signatures resolved yet. Click the Bytecode tab to load." }
+                            }
+                        } else {
+                            div { class: "sig-table",
+                                div { class: "sig-header",
+                                    span { "SELECTOR" }
+                                    span { "FUNCTION SIGNATURE" }
+                                    span { "TYPE" }
+                                }
+                                for sig in signatures.read().iter() {
+                                    div { class: "sig-row",
+                                        span { class: "sig-selector", "0x{sig.selector}" }
+                                        span { class: "sig-name code-inline", "{sig.signature}" }
+                                        span { class: "sig-type",
+                                            {
+                                                // Classify function type from signature
+                                                if sig.signature.contains("transfer") || sig.signature.contains("approve") || sig.signature.contains("mint") || sig.signature.contains("burn") {
+                                                    rsx! { span { class: "chip pending", style: "font-size:10px; padding:1px 6px;", "Write" } }
+                                                } else if sig.signature.contains("owner") || sig.signature.contains("pause") || sig.signature.contains("set") || sig.signature.contains("renounce") || sig.signature.contains("transfer") {
+                                                    rsx! { span { class: "chip pending", style: "font-size:10px; padding:1px 6px;", "Admin" } }
+                                                } else {
+                                                    rsx! { span { class: "chip info", style: "font-size:10px; padding:1px 6px;", "Read" } }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Raw bytecode ─────────────────────────────────
                     div { class: "detail-panel",
                         div { class: "detail-panel-title",
-                            { format!("Deployed Bytecode ({} bytes)", contract.bytecode_size) }
+                            { format!("Raw Bytecode — {} bytes ({:.2} KB)",
+                                contract.bytecode_size,
+                                contract.bytecode_size as f64 / 1024.0) }
                         }
-                        div { class: "bytecode-notice",
-                            svg { width:"14", height:"14", view_box:"0 0 24 24", fill:"none",
-                                stroke:"currentColor", stroke_width:"2",
-                                circle { cx:"12", cy:"12", r:"10" }
-                                path { d:"M12 8v4m0 4h.01" }
-                            }
-                            span {
-                                "Source code verification is not yet supported. "
-                                "Showing bytecode fingerprint only."
-                            }
-                        }
-                        div { class: "detail-table",
-                            div { class: "detail-row",
-                                div { class: "detail-key", "Size" }
-                                div { class: "detail-val",
-                                    { format!("{} bytes ({:.2} KB)",
-                                        contract.bytecode_size,
-                                        contract.bytecode_size as f64 / 1024.0) }
+                        div { style: "padding: 16px 20px;",
+                            div { class: "bytecode-actions", style: "margin-bottom:10px;",
+                                CopyButton { text: format!("0x{}", contract.bytecode_hex.clone()) }
+                                span { style: "font-size:11px; color:var(--text-muted);",
+                                    "Copy full bytecode to clipboard"
                                 }
                             }
-                            div { class: "detail-row",
-                                div { class: "detail-key", "Detected Selectors" }
-                                div { class: "detail-val", style: "flex-wrap:wrap; gap:5px;",
-                                    if contract.is_erc20 {
-                                        span { class: "code-inline", "transfer(address,uint256)" }
-                                        span { class: "code-inline", "balanceOf(address)" }
-                                        span { class: "code-inline", "totalSupply()" }
-                                        span { class: "code-inline", "approve(address,uint256)" }
-                                    }
-                                    if contract.is_erc721 {
-                                        span { class: "code-inline", "ownerOf(uint256)" }
-                                        span { class: "code-inline", "tokenURI(uint256)" }
-                                    }
-                                    if contract.has_owner {
-                                        span { class: "code-inline", "owner()" }
-                                    }
-                                    if contract.has_pause {
-                                        span { class: "code-inline", "pause()" }
-                                        span { class: "code-inline", "paused()" }
-                                    }
-                                    if contract.has_mint {
-                                        span { class: "code-inline", "mint(address,uint256)" }
-                                    }
-                                    if !contract.is_erc20 && !contract.is_erc721 &&
-                                       !contract.has_owner && !contract.has_pause && !contract.has_mint {
-                                        span { style: "color:var(--text-muted); font-size:12px;",
-                                            "No common selectors detected"
-                                        }
-                                    }
-                                }
-                            }
-                            div { class: "detail-row",
-                                div { class: "detail-key", "Bytecode" }
-                                div { class: "detail-val", style: "flex-direction:column; align-items:flex-start; gap:8px;",
-                                    div { class: "bytecode-actions",
-                                        CopyButton { text: format!("0x{}", contract.bytecode_hex.clone()) }
-                                        span { style: "font-size:11px; color:var(--text-muted);",
-                                            "Click to copy full bytecode"
-                                        }
-                                    }
-                                    div { class: "bytecode-full-box",
-                                        "0x{contract.bytecode_hex}"
-                                    }
-                                }
+                            div { class: "bytecode-full-box",
+                                "0x{contract.bytecode_hex}"
                             }
                         }
                     }
