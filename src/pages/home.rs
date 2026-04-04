@@ -8,7 +8,7 @@ use crate::services::rpc::{
 };
 use crate::components::loading::{Loading, ErrorBox, AddrDisplay};
 
-const VERSION: &str = "v0.1.7";
+const VERSION: &str = "v0.1.8";
 
 #[component]
 pub fn HomePage() -> Element {
@@ -86,7 +86,7 @@ pub fn HomePage() -> Element {
                         input {
                             class: "hero-search-input",
                             id: "home-search",
-                            placeholder: "Search by Address / Tx Hash / Block / Token",
+                            placeholder: "Search by Address / Tx Hash / Block / Token / Contract",
                             onkeydown: move |e: Event<KeyboardData>| {
                                 if e.key() == Key::Enter { run_search(); }
                             }
@@ -118,6 +118,7 @@ pub fn HomePage() -> Element {
                                 span { class: "hint-tag", "Tx Hash" }
                                 span { class: "hint-tag", "Block #" }
                                 span { class: "hint-tag", "Token" }
+                    span { class: "hint-tag", "Contract" }
                             }
                         } // close hero-left
 
@@ -412,11 +413,16 @@ fn run_search() {
                 if is_contract(&q).await {
                     let sym = get_token_symbol(&q).await;
                     if sym != "ERC-20" && !sym.is_empty() {
+                        // ERC-20 token → token page
                         window2.location().set_href(&format!("/token/{}", q)).ok();
-                        return;
+                    } else {
+                        // Any other contract → contract page
+                        window2.location().set_href(&format!("/contract/{}", q)).ok();
                     }
+                } else {
+                    // EOA → address page
+                    window2.location().set_href(&format!("/address/{}", q)).ok();
                 }
-                window2.location().set_href(&format!("/address/{}", q)).ok();
             });
         } else if q.chars().all(|c| c.is_ascii_digit()) {
             window.location().set_href(&format!("/block/{}", q)).ok();

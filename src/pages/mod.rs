@@ -9,3 +9,5 @@ pub mod not_found;
 pub mod token;
 
 pub mod epochs;
+
+pub mod contract;

@@ -83,6 +83,11 @@ pub fn AddressPage(address: String) -> Element {
                                     span { class: "chip success", style: "cursor:pointer;", "View Validators →" }
                                 }
                             }
+                            if *contract_flag.read() {
+                                Link { to: Route::ContractPage { address: address.clone() },
+                                    span { class: "chip info", style: "cursor:pointer;", "View Contract →" }
+                                }
+                            }
                         }
                         if let Some(bal) = *balance.read() {
                             div { class: "address-balance-big",

@@ -843,3 +843,77 @@ pub async fn get_validator_leader_counts(sample_blocks: u64) -> Vec<(String, u64
     result.sort_by(|a, b| b.1.cmp(&a.1));
     result
 }
+
+// ─── Contract detail data ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct ContractInfo {
+    pub address:       String,
+    pub bytecode_size: usize,   // bytes
+    pub bytecode_hex:  String,  // full bytecode hex
+    pub is_erc20:      bool,
+    pub is_erc721:     bool,
+    pub token_name:    String,
+    pub token_symbol:  String,
+    pub token_decimals: u8,
+    pub token_supply:  String,
+    pub balance:       f64,
+    pub tx_count:      u64,
+    // Common function selectors detected
+    pub has_owner:     bool,
+    pub has_pause:     bool,
+    pub has_mint:      bool,
+}
+
+pub async fn get_contract_info(address: &str) -> Result<ContractInfo, String> {
+    // Get bytecode
+    let params = serde_json::json!([address, "latest"]);
+    let code: String = rpc_call("eth_getCode", params).await.unwrap_or_default();
+    let code_stripped = code.strip_prefix("0x").unwrap_or(&code);
+    let bytecode_size = code_stripped.len() / 2; // hex chars / 2 = bytes
+    let bytecode_hex  = code_stripped.to_string();
+
+    if bytecode_size == 0 {
+        return Err("Not a contract — no bytecode found at this address.".to_string());
+    }
+
+    // Detect standard interfaces by checking bytecode for selectors
+    // ERC-20: transfer(0xa9059cbb), balanceOf(0x70a08231), totalSupply(0x18160ddd)
+    // ERC-721: ownerOf(0x6352211e), tokenURI(0xc87b56dd)
+    let is_erc20  = code_stripped.contains("a9059cbb") && code_stripped.contains("70a08231");
+    let is_erc721 = code_stripped.contains("6352211e") || code_stripped.contains("c87b56dd");
+    let has_owner = code_stripped.contains("8da5cb5b"); // owner()
+    let has_pause = code_stripped.contains("8456cb59") || code_stripped.contains("5c975abb"); // pause()/paused()
+    let has_mint  = code_stripped.contains("40c10f19") || code_stripped.contains("a0712d68"); // mint()
+
+    // Fetch token info + balance + nonce in parallel
+    let (token_info, balance, tx_count) = futures::join!(
+        get_token_info(address),
+        get_balance(address),
+        get_tx_count(address)
+    );
+
+    let (token_name, token_symbol, token_decimals, token_supply) =
+        if let Some(t) = token_info {
+            (t.name, t.symbol, t.decimals, t.total_supply)
+        } else {
+            (String::new(), String::new(), 0u8, String::new())
+        };
+
+    Ok(ContractInfo {
+        address: address.to_string(),
+        bytecode_size,
+        bytecode_hex,
+        is_erc20,
+        is_erc721,
+        token_name,
+        token_symbol,
+        token_decimals,
+        token_supply,
+        balance: balance.unwrap_or(0.0),
+        tx_count: tx_count.unwrap_or(0),
+        has_owner,
+        has_pause,
+        has_mint,
+    })
+}
