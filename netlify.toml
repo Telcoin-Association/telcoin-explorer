@@ -1,6 +1,6 @@
 [build]
   command = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && source $HOME/.cargo/env && cargo install dioxus-cli --locked && dx build --release"
-  publish = "dist"
+  publish = "target/dx/telcoin-explorer/release/web/public"
 
 [build.environment]
   RUST_LOG = "info"
