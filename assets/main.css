@@ -93,7 +93,7 @@ body {
 .header-inner {
   display: flex; align-items: center; gap: 20px;
   padding: 0 28px; height: 64px;
-  max-width: 1400px; margin: 0 auto;
+  margin: 0 auto;
 }
 
 /* Logo */
@@ -163,7 +163,7 @@ body {
   font-size: 12px;
 }
 .status-bar-inner {
-  max-width: 1400px; margin: 0 auto; padding: 0 28px;
+  margin: 0 auto; padding: 0 28px;
   display: flex; align-items: center; height: 38px; gap: 0;
 }
 .status-item {
@@ -205,7 +205,7 @@ body {
 }
 
 .hero-inner {
-  max-width: 800px; margin: 0 auto; text-align: center;
+  margin: 0 auto; text-align: center;
   position: relative; z-index: 1;
 }
 
@@ -258,7 +258,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .stats-strip-inner {
-  max-width: 1400px; margin: 0 auto; padding: 0 28px;
+  margin: 0 auto; padding: 0 28px;
   display: flex; align-items: center; min-height: 70px;
   flex-wrap: wrap;
 }
@@ -286,7 +286,7 @@ body {
 /* ── HOME CONTENT ────────────────────────────────────────── */
 
 .home-content {
-  max-width: 1400px; margin: 0 auto;
+  margin: 0 auto;
   padding: 24px 28px 40px;
   flex: 1;
 }
@@ -398,7 +398,7 @@ body {
 /* ── GENERAL PAGE ────────────────────────────────────────── */
 
 .page {
-  max-width: 1440px; margin: 0 auto; padding: 28px;
+  margin: 0 auto; padding: 28px;
 }
 .page-title {
   font-size: 20px; font-weight: 700; color: var(--text-primary);
@@ -1096,7 +1096,6 @@ a.page-btn:hover {
 }
 
 .blocks-inner {
-  max-width: 1400px;
   margin: 0 auto;
   padding: 28px;
 }
@@ -1129,7 +1128,6 @@ body { font-size: 15px; overflow-x: hidden; }
 
 /* ── HEADER ──────────────────────────────────────────────────────── */
 .header-inner {
-  max-width: 1400px;
   margin: 0 auto;
   padding: 0 28px;
   height: 64px;
@@ -1168,7 +1166,6 @@ body { font-size: 15px; overflow-x: hidden; }
   pointer-events: none;
 }
 .hero-inner {
-  max-width: 1400px;
   margin: 0 auto;
   padding: 0 0;
   position: relative;
@@ -1320,7 +1317,6 @@ body { font-size: 15px; overflow-x: hidden; }
   padding: 16px 28px;
 }
 .stats-strip-card {
-  max-width: 1400px;
   margin: 0 auto;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -1403,7 +1399,6 @@ body { font-size: 15px; overflow-x: hidden; }
 
 /* ── HOME CONTENT ─────────────────────────────────────────────────── */
 .home-content {
-  max-width: 1400px;
   margin: 0 auto;
   padding: 20px 28px 40px;
 }
@@ -1591,7 +1586,7 @@ body { font-size: 15px; overflow-x: hidden; }
 
 /* ── FOOTER ──────────────────────────────────────────────────────── */
 .site-footer { background: var(--bg-surface); border-top: 1px solid var(--border); padding: 20px 28px; }
-.footer-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.footer-inner { margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .footer-brand { font-weight: 700; color: var(--text-primary); font-size: 14px; }
 .footer-sep   { color: var(--text-muted); margin: 0 6px; }
 .footer-sub   { color: var(--text-muted); font-size: 12px; }
@@ -1812,7 +1807,6 @@ body { font-size: 15px; overflow-x: hidden; }
   padding: 48px 0 52px;
 }
 .hero-inner {
-  max-width: 1400px !important;
   margin: 0 auto !important;
   padding: 0 28px !important;
   text-align: left !important;
@@ -1823,13 +1817,11 @@ body { font-size: 15px; overflow-x: hidden; }
   padding: 16px 28px !important;
 }
 .stats-strip-card {
-  max-width: calc(1400px - 56px) !important;
   margin: 0 auto !important;
 }
 
 /* Home content */
 .home-content {
-  max-width: 1400px !important;
   margin: 0 auto !important;
   padding: 20px 28px 40px !important;
 }
@@ -1837,14 +1829,12 @@ body { font-size: 15px; overflow-x: hidden; }
 /* Footer */
 .site-footer { padding: 20px 0 !important; }
 .footer-inner {
-  max-width: 1400px !important;
   margin: 0 auto !important;
   padding: 0 28px !important;
 }
 
 /* Page */
 .page {
-  max-width: 1400px !important;
   margin: 0 auto !important;
   padding: 28px !important;
 }
@@ -1867,7 +1857,6 @@ body { font-size: 15px; overflow-x: hidden; }
   box-sizing: border-box !important;
 }
 .stats-strip-card {
-  max-width: 100% !important;
   width: 100% !important;
   margin: 0 !important;
   box-sizing: border-box !important;
@@ -1881,7 +1870,6 @@ body { font-size: 15px; overflow-x: hidden; }
 }
 .stats-strip-card {
   width: 100% !important;
-  max-width: 100% !important;
   margin: 0 !important;
 }
 .home-content {
