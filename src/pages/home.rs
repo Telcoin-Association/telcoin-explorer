@@ -4,11 +4,12 @@ use crate::router::Route;
 use crate::services::rpc::{
     get_latest_blocks, get_network_stats, get_avg_block_time,
     get_block_activity, get_block_time_history, subscribe_new_blocks,
+    get_transaction, Transaction,
     Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas,
 };
 use crate::components::loading::{Loading, ErrorBox, AddrDisplay};
 
-const VERSION: &str = "v0.1.9";
+const VERSION: &str = "v0.1.10";
 
 #[component]
 pub fn HomePage() -> Element {
@@ -20,6 +21,8 @@ pub fn HomePage() -> Element {
     let mut search_error: Signal<bool>           = use_signal(|| false);
     let mut avg_block_time: Signal<f64>          = use_signal(|| 0.0);
     let mut gas_history: Signal<Vec<(u64, f64)>>        = use_signal(|| vec![]);
+    let home_txs: Signal<Vec<Transaction>>               = use_signal(|| vec![]);
+    let txs_loading                                      = use_signal(|| true);
     let mut block_time_history: Signal<Vec<(u64, f64)>>  = use_signal(|| vec![]);
 
     let do_fetch = move || {
@@ -32,6 +35,23 @@ pub fn HomePage() -> Element {
             avg_block_time.set(avg_time);
             let history = get_block_activity(20).await;
             gas_history.set(history);
+            txs_loading.clone().set(true);
+            // Fetch up to 10 recent txs with full data — use blocks_res directly
+            let tx_hashes: Vec<(String, u64)> = blocks_res.as_ref()
+                .map(|bs| bs.iter()
+                    .flat_map(|b| b.transactions.iter().take(3).map(|h: &String| (h.clone(), b.number)).collect::<Vec<_>>())
+                    .take(10)
+                    .collect())
+                .unwrap_or_default();
+            let mut full_txs = Vec::new();
+            for (hash, _) in tx_hashes.iter() {
+                if let Ok(tx) = get_transaction(hash).await {
+                    full_txs.push(tx);
+                    if full_txs.len() >= 10 { break; }
+                }
+            }
+            home_txs.clone().set(full_txs);
+            txs_loading.clone().set(false);
             // Block time history — timestamps between consecutive blocks
             let bt_history = get_block_time_history(20).await;
             block_time_history.set(bt_history);
@@ -61,7 +81,7 @@ pub fn HomePage() -> Element {
 
     let recent_txs: Vec<(String, u64)> = blocks.read()
         .iter()
-        .flat_map(|b| b.transactions.iter().take(3).map(|h| (h.clone(), b.number)).collect::<Vec<_>>())
+        .flat_map(|b| b.transactions.iter().take(3).map(|h: &String| (h.clone(), b.number)).collect::<Vec<_>>())
         .take(10)
         .collect();
 
@@ -214,10 +234,12 @@ pub fn HomePage() -> Element {
 
 div { class: "dual-col",
 
-                    // Latest Blocks panel
+                    // ── Latest Blocks ─────────────────────────────────
                     div { class: "panel",
                         div { class: "panel-header",
-                            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"var(--tel-blue)", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none",
+                                stroke:"var(--tel-blue)", stroke_width:"1.5",
+                                stroke_linecap:"round", stroke_linejoin:"round",
                                 path { d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }
                                 path { d:"M3.27 6.96 12 12.01l8.73-5.05" }
                                 path { d:"M12 22.08V12" }
@@ -229,44 +251,51 @@ div { class: "dual-col",
                         } else if let Some(err) = error.read().as_ref() {
                             ErrorBox { msg: err.clone() }
                         } else {
+                            // Column headers
+                            div { class: "home-table-header",
+                                span { "BLOCK" }
+                                span { "AGE" }
+                                span { "TXNS" }
+                                span { "GAS USED" }
+                                span { "LEADER" }
+                            }
                             ul { class: "data-list",
                                 for block in blocks.read().iter() {
-                                    li { class: "home-row",
-                                        // Block icon
-                                        div { class: "home-row-icon block-row-icon",
-                                            svg { width:"16", height:"16", view_box:"0 0 24 24", fill:"none",
-                                                stroke:"var(--tel-blue)", stroke_width:"1.8",
-                                                stroke_linecap:"round", stroke_linejoin:"round",
-                                                path { d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }
-                                                path { d:"M3.27 6.96 12 12.01l8.73-5.05" }
-                                                path { d:"M12 22.08V12" }
+                                    li { class: "home-block-row",
+                                        // Block
+                                        div { class: "hbr-block",
+                                            div { class: "hbr-icon",
+                                                svg { width:"14", height:"14", view_box:"0 0 24 24", fill:"none",
+                                                    stroke:"var(--tel-blue)", stroke_width:"2",
+                                                    stroke_linecap:"round", stroke_linejoin:"round",
+                                                    path { d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }
+                                                }
                                             }
-                                        }
-                                        // Block number + age
-                                        div { class: "home-row-main",
                                             Link { to: Route::BlockPage { block_number: block.number },
-                                                span { class: "hash-cell home-row-id",
-                                                    { format!("{}", block.number) }
+                                                span { class: "hash-cell", "{block.number}" }
+                                            }
+                                        }
+                                        // Age
+                                        span { class: "hbr-age", "{unix_to_age(block.timestamp)}" }
+                                        // Txns
+                                        span { class: "hbr-txns",
+                                            span { class: "tx-badge", "{block.transaction_count}" }
+                                        }
+                                        // Gas used
+                                        span { class: "hbr-gas",
+                                            { format_gas(block.gas_used) }
+                                            span { class: "hbr-gas-pct",
+                                                {
+                                                    if block.gas_limit > 0 {
+                                                        format!(" ({:.1}%)", block.gas_used as f64 / block.gas_limit as f64 * 100.0)
+                                                    } else { String::new() }
                                                 }
                                             }
-                                            span { class: "home-row-age", "{unix_to_age(block.timestamp)}" }
                                         }
-                                        // Validator
-                                        div { class: "home-row-mid",
-                                            span { class: "home-row-label", "Validator" }
+                                        // Leader
+                                        div { class: "hbr-leader",
                                             Link { to: Route::AddressPage { address: block.validator.clone() },
-                                                span { class: "hash-cell home-row-addr",
-                                                    "{shorten_addr(&block.validator)}"
-                                                }
-                                            }
-                                            span { class: "home-row-detail",
-                                                { format!("{} txns in {} gas", block.transaction_count, block.gas_used) }
-                                            }
-                                        }
-                                        // Tx badge
-                                        div { class: "home-row-right",
-                                            span { class: "tx-badge",
-                                                "{block.transaction_count} txns"
+                                                span { class: "hash-cell", "{shorten_addr(&block.validator)}" }
                                             }
                                         }
                                     }
@@ -280,10 +309,12 @@ div { class: "dual-col",
                         }
                     }
 
-                    // Latest Transactions panel
+                    // ── Latest Transactions ───────────────────────────
                     div { class: "panel",
                         div { class: "panel-header",
-                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none", stroke:"var(--tel-blue)", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
+                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none",
+                                stroke:"var(--tel-blue)", stroke_width:"2",
+                                stroke_linecap:"round", stroke_linejoin:"round",
                                 path { d:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }
                                 path { d:"M14 2v6h6" }
                                 path { d:"M16 13H8" }
@@ -292,33 +323,90 @@ div { class: "dual-col",
                             }
                             span { class: "panel-title", "Latest Transactions" }
                         }
-                        if *loading.read() {
+                        if *loading.read() || *txs_loading.read() {
                             Loading { msg: Some("Loading transactions…".to_string()) }
-                        } else if recent_txs.is_empty() {
+                        } else if home_txs.read().is_empty() {
                             div { class: "panel-empty",
-                                "No transactions in the latest blocks"
+                                "No transactions in the latest 10 blocks"
                             }
                         } else {
+                            // Column headers
+                            div { class: "home-table-header home-tx-header",
+                                span { "TX HASH" }
+                                span { "METHOD" }
+                                span { "BLOCK" }
+                                span { "FROM" }
+                                span { "TO" }
+                                span { "VALUE" }
+                            }
                             ul { class: "data-list",
-                                for (hash, block_num) in recent_txs.iter() {
-                                    li { class: "home-row",
-                                        div { class: "home-row-icon tx-row-icon" }
-                                        div { class: "home-row-main",
-                                            Link { to: Route::TransactionPage { hash: hash.clone() },
-                                                span { class: "hash-cell home-row-id",
-                                                    "{shorten_hash(hash)}"
+                                for tx in home_txs.read().iter() {
+                                    li { class: "home-tx-row",
+                                        // Hash
+                                        div { class: "htr-hash",
+                                            div { class: "htr-icon",
+                                                svg { width:"12", height:"12", view_box:"0 0 24 24", fill:"none",
+                                                    stroke:"var(--tel-blue)", stroke_width:"2",
+                                                    stroke_linecap:"round", stroke_linejoin:"round",
+                                                    path { d:"M5 12h14" }
+                                                    path { d:"m12 5 7 7-7 7" }
+                                                }
+                                            }
+                                            Link { to: Route::TransactionPage { hash: tx.hash.clone() },
+                                                span { class: "hash-cell", "{shorten_hash(&tx.hash)}" }
+                                            }
+                                        }
+                                        // Method
+                                        span { class: "htr-method",
+                                            {
+                                                if let Some(ref di) = tx.decoded_input {
+                                                    rsx! { span { class: "method-badge", "{di.method}" } }
+                                                } else if tx.input == "0x" || tx.input.is_empty() {
+                                                    rsx! { span { class: "method-badge method-transfer", "Transfer" } }
+                                                } else {
+                                                    rsx! { span { class: "method-badge method-unknown", "Contract Call" } }
                                                 }
                                             }
                                         }
-                                        div { class: "home-row-mid",
-                                            span { class: "home-row-label", "Block" }
-                                            Link { to: Route::BlockPage { block_number: *block_num },
-                                                span { class: "hash-cell home-row-addr",
-                                                    { format!("#{}", block_num) }
+                                        // Block
+                                        span { class: "htr-block",
+                                            if let Some(bn) = tx.block_number {
+                                                Link { to: Route::BlockPage { block_number: bn },
+                                                    span { class: "hash-cell", "#{bn}" }
                                                 }
                                             }
                                         }
-                                        div { class: "home-row-right" }
+                                        // From
+                                        div { class: "htr-from",
+                                            Link { to: Route::AddressPage { address: tx.from.clone() },
+                                                span { class: "hash-cell", "{shorten_addr(&tx.from)}" }
+                                            }
+                                        }
+                                        // To
+                                        div { class: "htr-to",
+                                            {
+                                                if let Some(ref to) = tx.to {
+                                                    let to_clone = to.clone();
+                                                    rsx! {
+                                                        Link { to: Route::AddressPage { address: to_clone.clone() },
+                                                            span { class: "hash-cell", "{shorten_addr(&to_clone)}" }
+                                                        }
+                                                    }
+                                                } else {
+                                                    rsx! { span { class: "method-badge", "Contract Create" } }
+                                                }
+                                            }
+                                        }
+                                        // Value
+                                        span { class: "htr-value",
+                                            {
+                                                if tx.value_tel > 0.0 {
+                                                    format!("{:.4} TEL", tx.value_tel)
+                                                } else {
+                                                    "0 TEL".to_string()
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
