@@ -9,7 +9,7 @@ use crate::services::rpc::{
 };
 use crate::components::loading::{Loading, ErrorBox, AddrDisplay};
 
-const VERSION: &str = "v0.1.10";
+const VERSION: &str = "v0.1.11";
 
 #[component]
 pub fn HomePage() -> Element {
