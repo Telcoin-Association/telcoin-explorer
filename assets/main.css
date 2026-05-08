@@ -136,10 +136,8 @@ input  { font-family: inherit; }
 .hero::before {
   content: '';
   position: absolute; inset: 0;
-  background-image:
-    linear-gradient(rgba(45,206,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(45,206,255,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
+  background-image: url("data:image/svg+xml,<svg%20xmlns='http://www.w3.org/2000/svg'%20width='38.11'%20height='66.00'><polygon%20points='19.05,44.00%20-0.00,33.00%200.00,11.00%2019.05,0.00%2038.11,11.00%2038.11,33.00'%20fill='none'%20stroke='rgba(45,206,255,0.045)'%20stroke-width='1'/><polygon%20points='0.00,77.00%20-19.05,66.00%20-19.05,44.00%20-0.00,33.00%2019.05,44.00%2019.05,66.00'%20fill='none'%20stroke='rgba(45,206,255,0.045)'%20stroke-width='1'/><polygon%20points='38.11,77.00%2019.05,66.00%2019.05,44.00%2038.11,33.00%2057.16,44.00%2057.16,66.00'%20fill='none'%20stroke='rgba(45,206,255,0.045)'%20stroke-width='1'/></svg>");
+  background-size: 38.1px 66.0px;
   pointer-events: none;
 }
 .hero-inner {
