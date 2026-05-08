@@ -9,7 +9,7 @@ use crate::services::rpc::{
 };
 use crate::components::loading::{Loading, ErrorBox, AddrDisplay};
 
-const VERSION: &str = "v0.1.11";
+const VERSION: &str = "v0.1.12";
 
 #[component]
 pub fn HomePage() -> Element {
@@ -21,40 +21,34 @@ pub fn HomePage() -> Element {
     let mut search_error: Signal<bool>           = use_signal(|| false);
     let mut avg_block_time: Signal<f64>          = use_signal(|| 0.0);
     let mut gas_history: Signal<Vec<(u64, f64)>>        = use_signal(|| vec![]);
-    let home_txs: Signal<Vec<Transaction>>               = use_signal(|| vec![]);
-    let txs_loading                                      = use_signal(|| true);
+    let mut home_txs: Signal<Vec<Transaction>>           = use_signal(|| vec![]);
+    let mut txs_loading                                  = use_signal(|| true);
     let mut block_time_history: Signal<Vec<(u64, f64)>>  = use_signal(|| vec![]);
 
-    let do_fetch = move || {
+    use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
             let (stats_res, blocks_res) = futures::join!(
                 get_network_stats(),
                 get_latest_blocks(10)
             );
-            let avg_time = get_avg_block_time(10).await;
-            avg_block_time.set(avg_time);
-            let history = get_block_activity(20).await;
-            gas_history.set(history);
-            txs_loading.clone().set(true);
-            // Fetch up to 10 recent txs with full data — use blocks_res directly
-            let tx_hashes: Vec<(String, u64)> = blocks_res.as_ref()
+            avg_block_time.set(get_avg_block_time(10).await);
+            gas_history.set(get_block_activity(20).await);
+            txs_loading.set(true);
+            let tx_hashes: Vec<String> = blocks_res.as_ref()
                 .map(|bs| bs.iter()
-                    .flat_map(|b| b.transactions.iter().take(3).map(|h: &String| (h.clone(), b.number)).collect::<Vec<_>>())
-                    .take(10)
-                    .collect())
+                    .flat_map(|b| b.transactions.iter().take(3).cloned().collect::<Vec<_>>())
+                    .take(10).collect())
                 .unwrap_or_default();
             let mut full_txs = Vec::new();
-            for (hash, _) in tx_hashes.iter() {
+            for hash in tx_hashes.iter() {
                 if let Ok(tx) = get_transaction(hash).await {
                     full_txs.push(tx);
                     if full_txs.len() >= 10 { break; }
                 }
             }
-            home_txs.clone().set(full_txs);
-            txs_loading.clone().set(false);
-            // Block time history — timestamps between consecutive blocks
-            let bt_history = get_block_time_history(20).await;
-            block_time_history.set(bt_history);
+            home_txs.set(full_txs);
+            txs_loading.set(false);
+            block_time_history.set(get_block_time_history(20).await);
             match stats_res {
                 Ok(s)  => stats.set(Some(s)),
                 Err(e) => error.set(Some(e)),
@@ -68,29 +62,51 @@ pub fn HomePage() -> Element {
                 now.get_hours(), now.get_minutes(), now.get_seconds()));
             loading.set(false);
         });
-    };
-
-    use_effect(move || { do_fetch(); });
+    });
 
     use_future(move || async move {
         loop {
             gloo_timers::future::TimeoutFuture::new(30_000).await;
-            do_fetch();
+            let (stats_res, blocks_res) = futures::join!(
+                get_network_stats(),
+                get_latest_blocks(10)
+            );
+            avg_block_time.set(get_avg_block_time(10).await);
+            gas_history.set(get_block_activity(20).await);
+            txs_loading.set(true);
+            let tx_hashes: Vec<String> = blocks_res.as_ref()
+                .map(|bs| bs.iter()
+                    .flat_map(|b| b.transactions.iter().take(3).cloned().collect::<Vec<_>>())
+                    .take(10).collect())
+                .unwrap_or_default();
+            let mut full_txs = Vec::new();
+            for hash in tx_hashes.iter() {
+                if let Ok(tx) = get_transaction(hash).await {
+                    full_txs.push(tx);
+                    if full_txs.len() >= 10 { break; }
+                }
+            }
+            home_txs.set(full_txs);
+            txs_loading.set(false);
+            block_time_history.set(get_block_time_history(20).await);
+            match stats_res {
+                Ok(s)  => stats.set(Some(s)),
+                Err(e) => error.set(Some(e)),
+            }
+            match blocks_res {
+                Ok(b)  => blocks.set(b),
+                Err(e) => error.set(Some(e)),
+            }
+            let now = js_sys::Date::new_0();
+            last_updated.set(format!("{:02}:{:02}:{:02}",
+                now.get_hours(), now.get_minutes(), now.get_seconds()));
         }
     });
-
-    let recent_txs: Vec<(String, u64)> = blocks.read()
-        .iter()
-        .flat_map(|b| b.transactions.iter().take(3).map(|h: &String| (h.clone(), b.number)).collect::<Vec<_>>())
-        .take(10)
-        .collect();
 
     let total_txs: usize = blocks.read().iter().map(|b| b.transaction_count).sum();
 
     rsx! {
         div {
-
-
 
             // ── Hero (Etherscan-style) ────────────────────────────────
             div { class: "hero",
@@ -189,7 +205,7 @@ pub fn HomePage() -> Element {
                 }
             }
 
-            // ── Stats + Panels (all inside one width-constrained container) ──
+            // ── Stats + Panels ──────────────────────────────────────────
             div { class: "home-content",
                 div { class: "stats-strip-card",
                     if let Some(s) = stats.read().as_ref() {
@@ -231,8 +247,7 @@ pub fn HomePage() -> Element {
                 }
 
                 // ── Panels ──────────────────────────────────────────
-
-div { class: "dual-col",
+                div { class: "dual-col",
 
                     // ── Latest Blocks ─────────────────────────────────
                     div { class: "panel",
@@ -251,7 +266,6 @@ div { class: "dual-col",
                         } else if let Some(err) = error.read().as_ref() {
                             ErrorBox { msg: err.clone() }
                         } else {
-                            // Column headers
                             div { class: "home-table-header",
                                 span { "BLOCK" }
                                 span { "AGE" }
@@ -262,7 +276,6 @@ div { class: "dual-col",
                             ul { class: "data-list",
                                 for block in blocks.read().iter() {
                                     li { class: "home-block-row",
-                                        // Block
                                         div { class: "hbr-block",
                                             div { class: "hbr-icon",
                                                 svg { width:"14", height:"14", view_box:"0 0 24 24", fill:"none",
@@ -275,13 +288,10 @@ div { class: "dual-col",
                                                 span { class: "hash-cell", "{block.number}" }
                                             }
                                         }
-                                        // Age
                                         span { class: "hbr-age", "{unix_to_age(block.timestamp)}" }
-                                        // Txns
                                         span { class: "hbr-txns",
                                             span { class: "tx-badge", "{block.transaction_count}" }
                                         }
-                                        // Gas used
                                         span { class: "hbr-gas",
                                             { format_gas(block.gas_used) }
                                             span { class: "hbr-gas-pct",
@@ -292,7 +302,6 @@ div { class: "dual-col",
                                                 }
                                             }
                                         }
-                                        // Leader
                                         div { class: "hbr-leader",
                                             Link { to: Route::AddressPage { address: block.validator.clone() },
                                                 span { class: "hash-cell", "{shorten_addr(&block.validator)}" }
@@ -330,7 +339,6 @@ div { class: "dual-col",
                                 "No transactions in the latest 10 blocks"
                             }
                         } else {
-                            // Column headers
                             div { class: "home-table-header home-tx-header",
                                 span { "TX HASH" }
                                 span { "METHOD" }
@@ -342,7 +350,6 @@ div { class: "dual-col",
                             ul { class: "data-list",
                                 for tx in home_txs.read().iter() {
                                     li { class: "home-tx-row",
-                                        // Hash
                                         div { class: "htr-hash",
                                             div { class: "htr-icon",
                                                 svg { width:"12", height:"12", view_box:"0 0 24 24", fill:"none",
@@ -356,7 +363,6 @@ div { class: "dual-col",
                                                 span { class: "hash-cell", "{shorten_hash(&tx.hash)}" }
                                             }
                                         }
-                                        // Method
                                         span { class: "htr-method",
                                             {
                                                 if let Some(ref di) = tx.decoded_input {
@@ -368,7 +374,6 @@ div { class: "dual-col",
                                                 }
                                             }
                                         }
-                                        // Block
                                         span { class: "htr-block",
                                             if let Some(bn) = tx.block_number {
                                                 Link { to: Route::BlockPage { block_number: bn },
@@ -376,13 +381,11 @@ div { class: "dual-col",
                                                 }
                                             }
                                         }
-                                        // From
                                         div { class: "htr-from",
                                             Link { to: Route::AddressPage { address: tx.from.clone() },
                                                 span { class: "hash-cell", "{shorten_addr(&tx.from)}" }
                                             }
                                         }
-                                        // To
                                         div { class: "htr-to",
                                             {
                                                 if let Some(ref to) = tx.to {
@@ -397,7 +400,6 @@ div { class: "dual-col",
                                                 }
                                             }
                                         }
-                                        // Value
                                         span { class: "htr-value",
                                             {
                                                 if tx.value_tel > 0.0 {
@@ -413,8 +415,6 @@ div { class: "dual-col",
                         }
                     }
                 }
-
-
             }
         }
     }
@@ -454,12 +454,6 @@ fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
                 path { d:"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" }
             }
         },
-        "BLOCK TIME" => rsx! {
-            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round", class:"stat-icon",
-                circle { cx:"12", cy:"12", r:"10" }
-                path { d:"M12 6v6l4 2" }
-            }
-        },
         _ => rsx! {
             svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round", class:"stat-icon",
                 circle { cx:"12", cy:"12", r:"10" }
@@ -495,27 +489,22 @@ fn run_search() {
         if q.len() == 66 && q.starts_with("0x") {
             window.location().set_href(&format!("/tx/{}", q)).ok();
         } else if q.len() == 42 && q.starts_with("0x") {
-            // Check if it's a token contract, otherwise go to address
             wasm_bindgen_futures::spawn_local(async move {
                 use crate::services::rpc::{is_contract, get_token_symbol};
                 if is_contract(&q).await {
                     let sym = get_token_symbol(&q).await;
-                    if sym != "ERC-20" && !sym.is_empty() {
-                        // ERC-20 token → token page
+                    if !sym.is_empty() {
                         window2.location().set_href(&format!("/token/{}", q)).ok();
                     } else {
-                        // Any other contract → contract page
                         window2.location().set_href(&format!("/contract/{}", q)).ok();
                     }
                 } else {
-                    // EOA → address page
                     window2.location().set_href(&format!("/address/{}", q)).ok();
                 }
             });
         } else if q.chars().all(|c| c.is_ascii_digit()) {
             window.location().set_href(&format!("/block/{}", q)).ok();
         } else {
-            // Invalid input - flash error via js eval
             let _ = js_sys::eval("var el=document.getElementById('home-search');if(el){el.style.borderColor='#ef4444';el.style.boxShadow='0 0 0 3px rgba(239,68,68,0.2)';setTimeout(function(){el.style.borderColor='';el.style.boxShadow='';},2000);}");
         }
     }

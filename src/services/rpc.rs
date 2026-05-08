@@ -1,132 +1,72 @@
-// src/services/rpc.rs
-// Telcoin Network JSON-RPC client
-// RPC: https://rpc.telcoin.network  |  Chain ID: 2017
-// ConsensusRegistry: 0x07e17e17e17e17e17e17e17e17e17e17e17e17e1
+// src/services/rpc.rs — v0.1.12
+// Fix: getCurrentEpoch() selector 0xb97dd9e2 (was wrong 0x45c8b1a6)
+// Fix: getValidators(uint8) selector 0x8cc05eda with Active status=2 param
 
 use serde::{Deserialize, Serialize};
-use gloo_net::http::Request;
+use serde_json::Value;
 
-pub const RPC_ENDPOINTS: &[&str] = &[
-    "https://rpc.telcoin.network",
-    "https://adiri.tel",
-    "https://node1.telcoin.network",
-    "https://node2.telcoin.network",
-    "https://node3.telcoin.network",
-    "https://node4.telcoin.network",
-];
+// ── Constants ────────────────────────────────────────────────────────────────
 
-pub const CHAIN_ID: u64 = 2017;
-pub const NATIVE_TOKEN: &str = "TEL";
-pub const CONSENSUS_REGISTRY: &str = "0x07e17e17e17e17e17e17e17e17e17e17e17e17e1";
-pub const EPOCH_DURATION_HOURS: u64 = 24;
-pub const VALIDATOR_STAKE_REQUIRED: &str = "1,000,000 TEL";
+pub const RPC_URL:                  &str = "https://rpc.telcoin.network";
+pub const CHAIN_ID:                 u64  = 2017;
+pub const NATIVE_TOKEN:             &str = "TEL";
+pub const CONSENSUS_REGISTRY:       &str = "0x07e17e17e17e17e17e17e17e17e17e17e17e17e1";
+pub const VALIDATOR_STAKE_REQUIRED: &str = "1,000,000";
+pub const EPOCH_DURATION_HOURS:     u64  = 24;
 
-// ─── JSON-RPC ─────────────────────────────────────────────────────────────
+// ── Core types ───────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Debug, Clone)]
-struct RpcRequest<P: Serialize + Clone> {
-    jsonrpc: String,
-    method:  String,
-    params:  P,
-    id:      u32,
-}
-
-#[derive(Deserialize, Debug)]
-struct RpcResponse<T> {
-    result: Option<T>,
-    error:  Option<RpcError>,
-}
-
-#[derive(Deserialize, Debug)]
-struct RpcError { message: String }
-
-async fn rpc_call<P: Serialize + Clone, T: for<'de> Deserialize<'de>>(
-    method: &str, params: P,
-) -> Result<T, String> {
-    let mut last_err = "No endpoints available".to_string();
-    for endpoint in RPC_ENDPOINTS {
-        let body = RpcRequest {
-            jsonrpc: "2.0".to_string(),
-            method: method.to_string(),
-            params: params.clone(),
-            id: 1,
-        };
-        let body_str = serde_json::to_string(&body).map_err(|e| e.to_string())?;
-        match Request::post(endpoint)
-            .header("Content-Type", "application/json")
-            .body(body_str).map_err(|e| e.to_string())?
-            .send().await
-        {
-            Ok(resp) => match resp.json::<RpcResponse<T>>().await {
-                Ok(r) => {
-                    if let Some(e) = r.error { last_err = e.message; continue; }
-                    if let Some(v) = r.result { return Ok(v); }
-                }
-                Err(e) => { last_err = e.to_string(); continue; }
-            },
-            Err(e) => { last_err = e.to_string(); continue; }
-        }
-    }
-    Err(last_err)
-}
-
-// ─── Domain types ─────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub number:            u64,
     pub hash:              String,
     pub parent_hash:       String,
     pub timestamp:         u64,
-    pub validator:         String,
+    pub transactions:      Vec<String>,
+    pub transaction_count: usize,
     pub gas_used:          u64,
     pub gas_limit:         u64,
-    pub transaction_count: usize,
-    pub transactions:      Vec<String>,
+    pub miner:             String,
+    pub validator:         String,
+    pub extra_data:        String,
+    pub base_fee:          Option<u64>,
     pub size:              u64,
-    pub consensus:         String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// decoded_input fields used by pages:
+///   home.rs:    di.method
+///   tx.rs:      decoded.method, decoded.signature
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecodedInput {
+    pub method:    String,
+    pub signature: String,
+    pub params:    Vec<(String, String)>,
+}
+
+/// Transaction fields used by pages:
+///   value_tel: f64  — home: `> 0.0`, `{:.4}`;  tx: format_tel(t.value_tel);  block: `{:.4}`
+///   gas_used:  u64  — tx/block: `as f64`, `format!("{}")`
+///   gas_price: u64  — tx: `as f64`, `format!("{}")`
+///   status:    Option<bool>
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub hash:              String,
     pub from:              String,
     pub to:                Option<String>,
-    pub value:             String,
+    pub value:             u128,
     pub value_tel:         f64,
     pub gas:               u64,
-    pub gas_used:          u64,
     pub gas_price:         u64,
-    pub nonce:             u64,
-    pub block_number:      Option<u64>,
-    pub block_hash:        Option<String>,
-    pub transaction_index: Option<u64>,
-    pub input:             String,
+    pub gas_used:          u64,
     pub status:            Option<bool>,
+    pub input:             String,
     pub decoded_input:     Option<DecodedInput>,
+    pub block_number:      Option<u64>,
+    pub transaction_index: Option<u64>,
+    pub nonce:             u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DecodedInput {
-    pub method:    String,
-    pub signature: String,
-    pub params:    Vec<(String, String)>, // (name, value)
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TokenTransfer {
-    pub tx_hash:       String,
-    pub block_number:  u64,
-    pub timestamp:     u64,
-    pub from:          String,
-    pub to:            String,
-    pub token_address: String,
-    pub token_symbol:  String,
-    pub amount:        f64,
-    pub amount_raw:    String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkStats {
     pub latest_block:   u64,
     pub gas_price_gwei: f64,
@@ -134,224 +74,236 @@ pub struct NetworkStats {
     pub epoch_number:   Option<u64>,
 }
 
-// ─── Raw shapes ───────────────────────────────────────────────────────────
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-struct RawBlock {
-    number:       Option<String>,
-    hash:         Option<String>,
-    parent_hash:  Option<String>,
-    timestamp:    Option<String>,
-    miner:        Option<String>,
-    gas_used:     Option<String>,
-    gas_limit:    Option<String>,
-    transactions: Option<serde_json::Value>,
-    size:         Option<String>,
+/// TokenTransfer fields used by pages:
+///   amount: f64, timestamp: u64, token_symbol: String (mutable, set by caller)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenTransfer {
+    pub tx_hash:       String,
+    pub from:          String,
+    pub to:            String,
+    pub value:         u128,
+    pub amount:        f64,
+    pub block_number:  u64,
+    pub timestamp:     u64,
+    pub token_address: String,
+    pub token_symbol:  String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-struct RawTransaction {
-    hash:              Option<String>,
-    from:              Option<String>,
-    to:                Option<String>,
-    value:             Option<String>,
-    gas:               Option<String>,
-    gas_price:         Option<String>,
-    nonce:             Option<String>,
-    block_number:      Option<String>,
-    block_hash:        Option<String>,
-    transaction_index: Option<String>,
-    input:             Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenInfo {
+    pub address:      String,
+    pub name:         String,
+    pub symbol:       String,
+    pub decimals:     u8,
+    pub total_supply: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-struct RawReceipt {
-    status:   Option<String>,
-    gas_used: Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContractInfo {
+    pub address:        String,
+    pub balance:        f64,
+    pub tx_count:       u64,
+    pub bytecode_hex:   String,
+    pub bytecode_size:  usize,
+    pub is_erc20:       bool,
+    pub is_erc721:      bool,
+    pub has_owner:      bool,
+    pub has_pause:      bool,
+    pub has_mint:       bool,
+    pub token_name:     String,
+    pub token_symbol:   String,
+    pub token_decimals: u8,
+    pub token_supply:   String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct RawLog {
-    pub address:          Option<String>,
-    pub topics:           Option<Vec<String>>,
-    pub data:             Option<String>,
-    #[serde(rename = "blockNumber")]
-    pub block_number:     Option<String>,
-    #[serde(rename = "transactionHash")]
-    pub transaction_hash: Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionSignature {
+    pub selector:  String,
+    pub signature: String,
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
-pub fn hex_to_u64(s: &str) -> u64 {
-    u64::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).unwrap_or(0)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorInfo {
+    pub address:          String,
+    pub activation_epoch: u32,
+    pub exit_epoch:       u32,
+    pub status:           u8,
+    pub is_retired:       bool,
+    pub stake_version:    u8,
+    pub region:           u8,
 }
 
-pub fn hex_wei_to_tel(s: &str) -> f64 {
-    let s = s.strip_prefix("0x").unwrap_or(s);
-    if s.is_empty() || s == "0" { return 0.0; }
-    u128::from_str_radix(s, 16).unwrap_or(0) as f64 / 1e18
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EpochData {
+    pub epoch:           u64,
+    pub validator_count: usize,
+    /// Committee validator addresses (epochs.rs iterates these as strings)
+    pub validators:      Vec<String>,
+    pub start_block:     u64,
+    pub latest_block:    u64,
+}
+
+// ── RPC plumbing ─────────────────────────────────────────────────────────────
+
+pub async fn rpc_call<P: Serialize, R: for<'de> Deserialize<'de>>(
+    method: &str,
+    params: P,
+) -> Result<R, String> {
+    use gloo_net::http::Request;
+
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method":  method,
+        "params":  params,
+        "id":      1
+    });
+
+    let resp = Request::post(RPC_URL)
+        .json(&body)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    if let Some(err) = json.get("error") {
+        return Err(err.to_string());
+    }
+
+    let result = json.get("result").ok_or("no result field")?;
+    serde_json::from_value(result.clone()).map_err(|e| e.to_string())
+}
+
+// ── Hex helpers ──────────────────────────────────────────────────────────────
+
+pub fn hex_to_u64(hex: &str) -> u64 {
+    let s = hex.trim_start_matches("0x");
+    if s.is_empty() { return 0; }
+    u64::from_str_radix(s, 16).unwrap_or(0)
+}
+
+pub fn hex_to_u128(hex: &str) -> u128 {
+    let s = hex.trim_start_matches("0x");
+    if s.is_empty() { return 0; }
+    u128::from_str_radix(s, 16).unwrap_or(0)
+}
+
+fn hex_to_u32(hex: &str) -> u32 {
+    let s = hex.trim_start_matches("0x");
+    if s.is_empty() { return 0; }
+    u32::from_str_radix(s, 16).unwrap_or(0)
+}
+
+// ── Formatters ───────────────────────────────────────────────────────────────
+
+/// format_tel: transaction.rs calls format_tel(t.value_tel) where value_tel is f64
+pub fn format_tel(wei: f64) -> String {
+    let whole = (wei / 1e18) as u64;
+    let frac  = ((wei % 1e18) / 1e15) as u64;
+    if frac == 0 { format!("{whole}") } else { format!("{whole}.{frac:03}") }
+}
+
+pub fn format_gas(gas: u64) -> String {
+    if gas >= 1_000_000 { format!("{:.2}M", gas as f64 / 1_000_000.0) }
+    else if gas >= 1_000 { format!("{:.1}K", gas as f64 / 1_000.0) }
+    else                 { format!("{gas}") }
 }
 
 pub fn shorten_hash(h: &str) -> String {
-    if h.len() > 14 { format!("{}…{}", &h[..8], &h[h.len()-6..]) } else { h.to_string() }
+    if h.len() > 12 { format!("{}…{}", &h[..6], &h[h.len()-4..]) }
+    else { h.to_string() }
 }
 
-pub fn shorten_addr(h: &str) -> String {
-    if h.len() > 10 { format!("{}…{}", &h[..6], &h[h.len()-4..]) } else { h.to_string() }
-}
-
-pub fn format_tel(v: f64) -> String {
-    if v == 0.0 { "0 TEL".to_string() }
-    else if v < 0.0001 { format!("{:.8} TEL", v) }
-    else { format!("{:.4} TEL", v) }
+pub fn shorten_addr(a: &str) -> String {
+    if a.len() > 12 { format!("{}…{}", &a[..6], &a[a.len()-4..]) }
+    else { a.to_string() }
 }
 
 pub fn unix_to_age(ts: u64) -> String {
     let now = js_sys::Date::now() as u64 / 1000;
-    let d = now.saturating_sub(ts);
-    if d < 60 { format!("{} secs ago", d) }
-    else if d < 3600 { format!("{} mins ago", d / 60) }
-    else if d < 86400 { format!("{} hrs ago", d / 3600) }
-    else { format!("{} days ago", d / 86400) }
+    let diff = now.saturating_sub(ts);
+    if diff < 60         { format!("{diff}s ago") }
+    else if diff < 3600  { format!("{}m ago",  diff / 60) }
+    else if diff < 86400 { format!("{}h ago",  diff / 3600) }
+    else                 { format!("{}d ago",  diff / 86400) }
 }
 
 pub fn unix_to_datetime(ts: u64) -> String {
-    let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ts as f64 * 1000.0));
-    String::from(date.to_utc_string())
+    let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ts as f64 * 1000.0));
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
+        d.get_utc_full_year(), d.get_utc_month() + 1, d.get_utc_date(),
+        d.get_utc_hours(),     d.get_utc_minutes(),   d.get_utc_seconds(),
+    )
 }
 
-/// Decode known EVM function selectors from input data
-pub fn decode_input(input: &str) -> Option<DecodedInput> {
-    if input.len() < 10 { return None; }
-    let selector = &input[..10].to_lowercase();
-    match selector.as_str() {
-        // ERC-20
-        "0xa9059cbb" => Some(DecodedInput {
-            method: "transfer".to_string(),
-            signature: "transfer(address,uint256)".to_string(),
-            params: vec![
-                ("to".to_string(),     extract_address(&input[10..10+64])),
-                ("amount".to_string(), extract_uint256(&input[74..74+64])),
-            ],
-        }),
-        "0x23b872dd" => Some(DecodedInput {
-            method: "transferFrom".to_string(),
-            signature: "transferFrom(address,address,uint256)".to_string(),
-            params: vec![
-                ("from".to_string(),   extract_address(&input[10..10+64])),
-                ("to".to_string(),     extract_address(&input[74..74+64])),
-                ("amount".to_string(), extract_uint256(&input[138..138+64])),
-            ],
-        }),
-        "0x095ea7b3" => Some(DecodedInput {
-            method: "approve".to_string(),
-            signature: "approve(address,uint256)".to_string(),
-            params: vec![
-                ("spender".to_string(), extract_address(&input[10..10+64])),
-                ("amount".to_string(),  extract_uint256(&input[74..74+64])),
-            ],
-        }),
-        // ConsensusRegistry
-        "0x4e71d92d" => Some(DecodedInput {
-            method: "claim".to_string(),
-            signature: "claim()".to_string(),
-            params: vec![],
-        }),
-        "0x3ccfd60b" => Some(DecodedInput {
-            method: "withdraw".to_string(),
-            signature: "withdraw()".to_string(),
-            params: vec![],
-        }),
-        "0xd0e30db0" => Some(DecodedInput {
-            method: "deposit".to_string(),
-            signature: "deposit()".to_string(),
-            params: vec![],
-        }),
-        "0x60806040" => Some(DecodedInput {
-            method: "Contract Deployment".to_string(),
-            signature: "constructor(...)".to_string(),
-            params: vec![],
-        }),
-        _ => Some(DecodedInput {
-            method: format!("Unknown ({})", selector),
-            signature: selector.to_string(),
-            params: vec![],
-        }),
-    }
-}
-
-fn extract_address(hex: &str) -> String {
-    if hex.len() >= 64 {
-        format!("0x{}", &hex[24..64])
-    } else {
-        format!("0x{}", hex)
-    }
-}
-
-fn extract_uint256(hex: &str) -> String {
-    if hex.is_empty() { return "0".to_string(); }
-    let trimmed = hex.trim_start_matches('0');
-    if trimmed.is_empty() { return "0".to_string(); }
-    match u128::from_str_radix(trimmed, 16) {
-        Ok(v) => v.to_string(),
-        Err(_) => format!("0x{}", hex),
-    }
-}
-
-// ─── Network ──────────────────────────────────────────────────────────────
+// ── Chain queries ─────────────────────────────────────────────────────────────
 
 pub async fn get_block_number() -> Result<u64, String> {
-    let r: String = rpc_call("eth_blockNumber", serde_json::json!([])).await?;
-    Ok(hex_to_u64(&r))
+    let hex: String = rpc_call("eth_blockNumber", serde_json::json!([])).await?;
+    Ok(hex_to_u64(&hex))
 }
 
-pub async fn get_gas_price() -> Result<f64, String> {
-    let r: String = rpc_call("eth_gasPrice", serde_json::json!([])).await?;
-    Ok(hex_to_u64(&r) as f64 / 1e9)
+pub async fn get_gas_price() -> Option<f64> {
+    let hex: String = rpc_call("eth_gasPrice", serde_json::json!([])).await.ok()?;
+    Some(hex_to_u64(&hex) as f64 / 1e9)
 }
 
-pub async fn get_epoch_info() -> Option<u64> {
-    let call = serde_json::json!([{"to": CONSENSUS_REGISTRY, "data": "0x45c8b1a6"}, "latest"]);
-    match rpc_call::<_, String>("eth_call", call).await {
-        Ok(hex) => { let e = hex_to_u64(&hex); if e > 0 { Some(e) } else { None } }
-        Err(_)  => None,
-    }
+/// address.rs declares: let balance: Signal<Option<f64>>
+/// and: Ok(b) => balance.set(Some(b))
+/// So get_balance must return f64.
+pub async fn get_balance(addr: &str) -> Result<f64, String> {
+    let hex: String = rpc_call("eth_getBalance", serde_json::json!([addr, "latest"])).await?;
+    Ok(hex_to_u128(&hex) as f64 / 1e18)
 }
 
-pub async fn get_network_stats() -> Result<NetworkStats, String> {
-    let latest_block   = get_block_number().await?;
-    let gas_price_gwei = get_gas_price().await.unwrap_or(0.0);
-    let epoch_number   = get_epoch_info().await;
-    Ok(NetworkStats { latest_block, gas_price_gwei, chain_id: CHAIN_ID, epoch_number })
+pub async fn get_tx_count(addr: &str) -> Result<u64, String> {
+    let hex: String = rpc_call("eth_getTransactionCount", serde_json::json!([addr, "latest"])).await?;
+    Ok(hex_to_u64(&hex))
 }
 
-// ─── Blocks ───────────────────────────────────────────────────────────────
+pub async fn is_contract(addr: &str) -> bool {
+    let hex: String = match rpc_call("eth_getCode", serde_json::json!([addr, "latest"])).await {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    hex.len() > 2
+}
+
+// ── Block parsing ─────────────────────────────────────────────────────────────
+
+fn parse_block(v: &Value) -> Option<Block> {
+    let txns: Vec<String> = v["transactions"].as_array()
+        .map(|a| a.iter().filter_map(|t| {
+            if let Some(s) = t.as_str() { Some(s.to_string()) }
+            else { t["hash"].as_str().map(|s| s.to_string()) }
+        }).collect())
+        .unwrap_or_default();
+    let tx_count = txns.len();
+    let miner = v["miner"].as_str().unwrap_or("").to_string();
+    let size  = hex_to_u64(v["size"].as_str().unwrap_or("0x0"));
+    Some(Block {
+        number:            hex_to_u64(v["number"].as_str()?),
+        hash:              v["hash"].as_str().unwrap_or("").to_string(),
+        parent_hash:       v["parentHash"].as_str().unwrap_or("").to_string(),
+        timestamp:         hex_to_u64(v["timestamp"].as_str()?),
+        transaction_count: tx_count,
+        transactions:      txns,
+        gas_used:          hex_to_u64(v["gasUsed"].as_str().unwrap_or("0x0")),
+        gas_limit:         hex_to_u64(v["gasLimit"].as_str().unwrap_or("0x0")),
+        validator:         miner.clone(),
+        miner,
+        extra_data:        v["extraData"].as_str().unwrap_or("").to_string(),
+        base_fee:          v["baseFeePerGas"].as_str().map(hex_to_u64),
+        size,
+    })
+}
 
 pub async fn get_block_by_number(n: u64) -> Result<Block, String> {
-    let raw: RawBlock = rpc_call("eth_getBlockByNumber",
-        serde_json::json!([format!("0x{:x}", n), false])).await?;
-    let txs: Vec<String> = match &raw.transactions {
-        Some(serde_json::Value::Array(a)) =>
-            a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect(),
-        _ => vec![],
-    };
-    Ok(Block {
-        number:            raw.number.as_deref().map(hex_to_u64).unwrap_or(n),
-        hash:              raw.hash.unwrap_or_default(),
-        parent_hash:       raw.parent_hash.unwrap_or_default(),
-        timestamp:         raw.timestamp.as_deref().map(hex_to_u64).unwrap_or(0),
-        validator:         raw.miner.unwrap_or_default(),
-        gas_used:          raw.gas_used.as_deref().map(hex_to_u64).unwrap_or(0),
-        gas_limit:         raw.gas_limit.as_deref().map(hex_to_u64).unwrap_or(0),
-        transaction_count: txs.len(),
-        transactions:      txs,
-        size:              raw.size.as_deref().map(hex_to_u64).unwrap_or(0),
-        consensus:         "DAG (Narwhal/Bullshark)".to_string(),
-    })
+    let hex = format!("0x{n:x}");
+    let v: Value = rpc_call("eth_getBlockByNumber", serde_json::json!([hex, false])).await?;
+    parse_block(&v).ok_or_else(|| "failed to parse block".to_string())
 }
 
 pub async fn get_latest_blocks(count: u64) -> Result<Vec<Block>, String> {
@@ -365,624 +317,465 @@ pub async fn get_latest_blocks(count: u64) -> Result<Vec<Block>, String> {
     Ok(blocks)
 }
 
-/// Fetch a page of blocks (for the block list page)
 pub async fn get_blocks_page(page: u64, per_page: u64) -> Result<(Vec<Block>, u64), String> {
     let latest = get_block_number().await?;
     let start  = latest.saturating_sub(page * per_page);
     let mut blocks = Vec::new();
     for i in 0..per_page {
-        if start < i { break; }
-        if let Ok(b) = get_block_by_number(start.saturating_sub(i)).await {
+        let n = start.saturating_sub(i);
+        if n == 0 { break; }
+        if let Ok(b) = get_block_by_number(n).await {
             blocks.push(b);
         }
     }
     Ok((blocks, latest))
 }
 
-// ─── Transactions ─────────────────────────────────────────────────────────
+// ── Block time / activity ─────────────────────────────────────────────────────
 
-pub async fn get_transaction(hash: &str) -> Result<Transaction, String> {
-    let raw: RawTransaction =
-        rpc_call("eth_getTransactionByHash", serde_json::json!([hash])).await?;
-    let receipt: Option<RawReceipt> =
-        rpc_call("eth_getTransactionReceipt", serde_json::json!([hash])).await.ok();
-    let status   = receipt.as_ref().and_then(|r| r.status.as_deref()).map(|s| s == "0x1");
-    let gas_used = receipt.as_ref().and_then(|r| r.gas_used.as_deref()).map(hex_to_u64).unwrap_or(0);
-    let value_hex = raw.value.clone().unwrap_or_else(|| "0x0".to_string());
-    let input = raw.input.clone().unwrap_or_default();
-    let decoded_input = if input.len() >= 10 { decode_input(&input) } else { None };
-    Ok(Transaction {
-        hash:              raw.hash.unwrap_or_default(),
-        from:              raw.from.unwrap_or_default(),
-        to:                raw.to,
-        value:             value_hex.clone(),
-        value_tel:         hex_wei_to_tel(&value_hex),
-        gas:               raw.gas.as_deref().map(hex_to_u64).unwrap_or(0),
-        gas_used,
-        gas_price:         raw.gas_price.as_deref().map(hex_to_u64).unwrap_or(0),
-        nonce:             raw.nonce.as_deref().map(hex_to_u64).unwrap_or(0),
-        block_number:      raw.block_number.as_deref().map(hex_to_u64),
-        block_hash:        raw.block_hash,
-        transaction_index: raw.transaction_index.as_deref().map(hex_to_u64),
-        input,
-        status,
-        decoded_input,
+pub async fn get_avg_block_time(n: u64) -> f64 {
+    let latest = match get_block_number().await { Ok(l) => l, Err(_) => return 1.0 };
+    let newer  = match get_block_by_number(latest).await { Ok(b) => b, Err(_) => return 1.0 };
+    let older  = match get_block_by_number(latest.saturating_sub(n)).await { Ok(b) => b, Err(_) => return 1.0 };
+    if n == 0 { return 1.0; }
+    newer.timestamp.saturating_sub(older.timestamp) as f64 / n as f64
+}
+
+pub async fn get_block_activity(n: u64) -> Vec<(u64, f64)> {
+    let latest = match get_block_number().await { Ok(l) => l, Err(_) => return vec![] };
+    let mut result = Vec::new();
+    for i in (0..n).rev() {
+        if let Ok(b) = get_block_by_number(latest.saturating_sub(i)).await {
+            result.push((b.number, b.transaction_count as f64));
+        }
+    }
+    result
+}
+
+pub async fn get_block_time_history(n: u64) -> Vec<(u64, f64)> {
+    let latest = match get_block_number().await { Ok(l) => l, Err(_) => return vec![] };
+    let mut blocks = Vec::new();
+    for i in 0..=n {
+        if let Ok(b) = get_block_by_number(latest.saturating_sub(i)).await {
+            blocks.push(b);
+        }
+    }
+    blocks.sort_by_key(|b| b.number);
+    blocks.windows(2)
+        .map(|w| (w[1].number, w[1].timestamp.saturating_sub(w[0].timestamp) as f64))
+        .collect()
+}
+
+pub async fn subscribe_new_blocks() -> Result<u64, String> {
+    get_block_number().await
+}
+
+// ── Transaction queries ───────────────────────────────────────────────────────
+
+fn parse_tx(v: &Value) -> Option<Transaction> {
+    let value_wei = hex_to_u128(v["value"].as_str().unwrap_or("0x0"));
+    Some(Transaction {
+        hash:              v["hash"].as_str()?.to_string(),
+        from:              v["from"].as_str().unwrap_or("").to_string(),
+        to:                v["to"].as_str().map(|s| s.to_string()),
+        value:             value_wei,
+        value_tel:         value_wei as f64 / 1e18,
+        gas:               hex_to_u64(v["gas"].as_str().unwrap_or("0x0")),
+        gas_price:         hex_to_u64(v["gasPrice"].as_str().unwrap_or("0x0")),
+        gas_used:          0,   // filled from receipt below
+        status:            None,
+        input:             v["input"].as_str().unwrap_or("0x").to_string(),
+        decoded_input:     None,
+        block_number:      v["blockNumber"].as_str().map(hex_to_u64),
+        transaction_index: v["transactionIndex"].as_str().map(hex_to_u64),
+        nonce:             hex_to_u64(v["nonce"].as_str().unwrap_or("0x0")),
     })
 }
 
-// ─── Address ──────────────────────────────────────────────────────────────
-
-pub async fn get_balance(address: &str) -> Result<f64, String> {
-    let r: String = rpc_call("eth_getBalance", serde_json::json!([address, "latest"])).await?;
-    Ok(hex_wei_to_tel(&r))
+pub async fn get_transaction(hash: &str) -> Result<Transaction, String> {
+    let v: Value = rpc_call("eth_getTransactionByHash", serde_json::json!([hash])).await?;
+    let mut tx = parse_tx(&v).ok_or_else(|| "failed to parse tx".to_string())?;
+    if let Ok(receipt) = rpc_call::<_, Value>(
+        "eth_getTransactionReceipt", serde_json::json!([hash])
+    ).await {
+        tx.gas_used = receipt["gasUsed"].as_str().map(hex_to_u64).unwrap_or(0);
+        tx.status   = receipt["status"].as_str().map(|s| hex_to_u64(s) == 1);
+    }
+    Ok(tx)
 }
 
-pub async fn get_tx_count(address: &str) -> Result<u64, String> {
-    let r: String = rpc_call("eth_getTransactionCount", serde_json::json!([address, "latest"])).await?;
-    Ok(hex_to_u64(&r))
+pub async fn get_tx_receipt_status(hash: &str) -> Option<bool> {
+    let v: Value = rpc_call("eth_getTransactionReceipt", serde_json::json!([hash])).await.ok()?;
+    Some(hex_to_u64(v["status"].as_str()?) == 1)
 }
 
-pub async fn get_token_transfers(address: &str, from_block: u64, to_block: u64) -> Result<Vec<RawLog>, String> {
-    let transfer_topic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-    let params = serde_json::json!([{
-        "fromBlock": format!("0x{:x}", from_block),
-        "toBlock":   format!("0x{:x}", to_block),
-        "topics":    [transfer_topic, null, null],
-        "address":   null
-    }]);
-    let logs: Vec<RawLog> = rpc_call("eth_getLogs", params).await.unwrap_or_default();
-    let lower  = address.to_lowercase();
-    let suffix = lower.strip_prefix("0x").unwrap_or(&lower);
-    Ok(logs.into_iter().filter(|l| {
-        l.topics.as_ref().map(|t| {
-            t.get(1).map(|s| s.ends_with(suffix)).unwrap_or(false) ||
-            t.get(2).map(|s| s.ends_with(suffix)).unwrap_or(false)
-        }).unwrap_or(false)
-    }).collect())
+/// block.rs calls: get_transactions_for_block(&hashes)  →  txs.set(fetched)
+/// So: takes &Vec<String>, returns Vec<Transaction> (not Result)
+pub async fn get_transactions_for_block(hashes: &Vec<String>) -> Vec<Transaction> {
+    let mut txs = Vec::new();
+    for h in hashes {
+        if let Ok(tx) = get_transaction(h).await {
+            txs.push(tx);
+        }
+    }
+    txs
 }
 
-pub fn parse_transfer_logs(logs: Vec<RawLog>) -> Vec<TokenTransfer> {
+// ── Token / ERC-20 ────────────────────────────────────────────────────────────
+
+fn abi_decode_string(hex: &str) -> Option<String> {
+    let raw = hex.trim_start_matches("0x");
+    if raw.len() < 128 { return None; }
+    let len = usize::from_str_radix(&raw[64..128], 16).ok()? * 2;
+    let s = raw.get(128..128 + len)?;
+    let bytes: Vec<u8> = (0..s.len()).step_by(2)
+        .filter_map(|i| u8::from_str_radix(&s[i..i+2], 16).ok())
+        .collect();
+    String::from_utf8(bytes).ok()
+}
+
+fn abi_call(contract: &str, selector: &str) -> serde_json::Value {
+    serde_json::json!([{"to": contract, "data": selector}, "latest"])
+}
+
+/// home.rs:
+///   let sym = get_token_symbol(&q).await;
+///   if sym != "ERC-20" && !sym.is_empty() { ... }
+/// So get_token_symbol must return String (not Option<String>).
+/// Returns empty string if not a token / call fails.
+pub async fn get_token_symbol(contract: &str) -> String {
+    let hex: String = match rpc_call("eth_call", abi_call(contract, "0x95d89b41")).await {
+        Ok(h) => h,
+        Err(_) => return String::new(),
+    };
+    abi_decode_string(&hex).unwrap_or_default()
+}
+
+/// address.rs / contract.rs cache: seen: HashMap<String, String>
+/// and: seen.insert(addr, s.clone()); t.token_symbol = sym;
+/// So get_token_symbol returns String — the token_symbol cache is String → String.
+
+/// token.rs:
+///   match get_token_info(&address).await {
+///       Some(info) => { ... }
+///       None => { not_token.set(true); }
+///   }
+/// So get_token_info must return Option<TokenInfo>.
+pub async fn get_token_info(addr: &str) -> Option<TokenInfo> {
+    let name_hex:     String = rpc_call("eth_call", abi_call(addr, "0x06fdde03")).await.unwrap_or_default();
+    let symbol_hex:   String = rpc_call("eth_call", abi_call(addr, "0x95d89b41")).await.unwrap_or_default();
+    let decimals_hex: String = rpc_call("eth_call", abi_call(addr, "0x313ce567")).await.unwrap_or_default();
+    let supply_hex:   String = rpc_call("eth_call", abi_call(addr, "0x18160ddd")).await.unwrap_or_default();
+
+    let name     = abi_decode_string(&name_hex).unwrap_or_default();
+    let symbol   = abi_decode_string(&symbol_hex).unwrap_or_default();
+
+    if name.is_empty() && symbol.is_empty() {
+        return None;
+    }
+
+    let decimals = hex_to_u64(&decimals_hex) as u8;
+    let raw_sup  = hex_to_u128(&supply_hex);
+    let div      = 10u128.pow(decimals as u32);
+    let total_supply = if div > 0 { format!("{}", raw_sup / div) } else { raw_sup.to_string() };
+
+    Some(TokenInfo { address: addr.to_string(), name, symbol, decimals, total_supply })
+}
+
+pub async fn get_token_transfers(
+    addr: &str,
+    from_block: u64,
+    to_block: u64,
+) -> Result<Vec<Value>, String> {
+    let topic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+    let addr_padded = format!("0x{:0>64}", addr.trim_start_matches("0x").to_lowercase());
+    let mut logs: Vec<Value> = rpc_call("eth_getLogs", serde_json::json!([{
+        "fromBlock": format!("0x{from_block:x}"),
+        "toBlock":   format!("0x{to_block:x}"),
+        "topics": [topic, null, addr_padded.clone()],
+    }])).await.unwrap_or_default();
+    let logs2: Vec<Value> = rpc_call("eth_getLogs", serde_json::json!([{
+        "fromBlock": format!("0x{from_block:x}"),
+        "toBlock":   format!("0x{to_block:x}"),
+        "topics": [topic, addr_padded, null],
+    }])).await.unwrap_or_default();
+    logs.extend(logs2);
+    Ok(logs)
+}
+
+/// address.rs / contract.rs / token.rs all call: parse_transfer_logs(logs)  (one arg)
+/// token_symbol left empty — caller fills it via get_token_symbol()
+pub fn parse_transfer_logs(logs: Vec<Value>) -> Vec<TokenTransfer> {
     logs.into_iter().filter_map(|log| {
-        let topics = log.topics.as_ref()?;
+        let topics = log["topics"].as_array()?;
         if topics.len() < 3 { return None; }
-        let from = format!("0x{}", &topics[1][topics[1].len().saturating_sub(40)..]);
-        let to   = format!("0x{}", &topics[2][topics[2].len().saturating_sub(40)..]);
-        let raw  = log.data.clone().unwrap_or_else(|| "0x0".to_string());
+        let from  = format!("0x{}", &topics[1].as_str()?.trim_start_matches("0x")[24..]);
+        let to    = format!("0x{}", &topics[2].as_str()?.trim_start_matches("0x")[24..]);
+        let value = hex_to_u128(log["data"].as_str().unwrap_or("0x0"));
         Some(TokenTransfer {
-            tx_hash:       log.transaction_hash.unwrap_or_default(),
-            block_number:  log.block_number.as_deref().map(hex_to_u64).unwrap_or(0),
-            timestamp:     0,
+            tx_hash:       log["transactionHash"].as_str().unwrap_or("").to_string(),
             from, to,
-            token_address: log.address.clone().unwrap_or_default(),
-            token_symbol:  "ERC-20".to_string(),
-            amount:        hex_wei_to_tel(&raw),
-            amount_raw:    raw,
+            value,
+            amount:        value as f64 / 1e18,
+            block_number:  hex_to_u64(log["blockNumber"].as_str().unwrap_or("0x0")),
+            timestamp:     0,
+            token_address: log["address"].as_str().unwrap_or("").to_string(),
+            token_symbol:  String::new(),
         })
     }).collect()
 }
 
-// ─── Validators ───────────────────────────────────────────────────────────
+// ── Contract inspection ───────────────────────────────────────────────────────
 
-pub async fn get_recent_validators(block_count: u64) -> Result<Vec<String>, String> {
-    let latest = get_block_number().await?;
-    let mut seen = std::collections::BTreeSet::new();
-    for i in 0..block_count.min(50) {
-        if let Ok(b) = get_block_by_number(latest.saturating_sub(i)).await {
-            if !b.validator.is_empty() &&
-               b.validator != "0x0000000000000000000000000000000000000000" {
-                seen.insert(b.validator);
-            }
-        }
-    }
-    Ok(seen.into_iter().collect())
-}
+pub async fn get_contract_info(addr: &str) -> Result<ContractInfo, String> {
+    let bytecode: String = rpc_call("eth_getCode", serde_json::json!([addr, "latest"]))
+        .await.unwrap_or_default();
+    let raw = bytecode.trim_start_matches("0x");
+    let bytecode_size = raw.len() / 2;
 
-// ─── Contract Detection ───────────────────────────────────────────────────
+    let balance  = get_balance(addr).await.unwrap_or(0.0);
+    let tx_count = get_tx_count(addr).await.unwrap_or(0);
 
-pub async fn is_contract(address: &str) -> bool {
-    let params = serde_json::json!([address, "latest"]);
-    let code: String = rpc_call("eth_getCode", params).await.unwrap_or_default();
-    // "0x" or "0x0" means EOA, anything longer is a contract
-    code.len() > 3
-}
+    let is_erc20  = raw.contains("a9059cbb") && raw.contains("70a08231") && raw.contains("18160ddd");
+    let is_erc721 = raw.contains("6352211e") && raw.contains("70a08231");
+    let has_owner = raw.contains("8da5cb5b");
+    let has_pause = raw.contains("5c975abb");
+    let has_mint  = raw.contains("40c10f19") || raw.contains("a0712d68");
 
-// ─── Validators from ConsensusRegistry ───────────────────────────────────
-
-pub async fn get_validators_from_registry() -> Result<Vec<String>, String> {
-    // Call getValidators() selector: 0xb7ab4db5
-    let params = serde_json::json!([{
-        "to": "0x07e17e17e17e17e17e17e17e17e17e17e17e17e1",
-        "data": "0xb7ab4db5"
-    }, "latest"]);
-    let result: String = rpc_call("eth_call", params).await.unwrap_or_default();
-    if result.len() < 10 {
-        // Fallback to scanning recent blocks
-        return get_recent_validators(50).await;
-    }
-    // Parse ABI-encoded address array
-    // Skip first 32 bytes (offset) + 32 bytes (length)
-    let hex = result.strip_prefix("0x").unwrap_or(&result);
-    if hex.len() < 128 {
-        return get_recent_validators(50).await;
-    }
-    let count_hex = &hex[64..128];
-    let count = u64::from_str_radix(count_hex, 16).unwrap_or(0) as usize;
-    let mut validators = Vec::new();
-    for i in 0..count {
-        let start = 128 + i * 64;
-        let end   = start + 64;
-        if end > hex.len() { break; }
-        let addr_hex = &hex[start..end];
-        let addr = format!("0x{}", &addr_hex[24..]); // last 20 bytes
-        validators.push(addr);
-    }
-    if validators.is_empty() {
-        return get_recent_validators(50).await;
-    }
-    Ok(validators)
-}
-
-// ─── Token name/symbol resolution ─────────────────────────────────────────
-
-pub async fn get_token_name(contract: &str) -> String {
-    // name() selector: 0x06fdde03
-    let params = serde_json::json!([{"to": contract, "data": "0x06fdde03"}, "latest"]);
-    let result: String = rpc_call("eth_call", params).await.unwrap_or_default();
-    decode_string_result(&result)
-}
-
-pub async fn get_token_symbol(contract: &str) -> String {
-    // symbol() selector: 0x95d89b41
-    let params = serde_json::json!([{"to": contract, "data": "0x95d89b41"}, "latest"]);
-    let result: String = rpc_call("eth_call", params).await.unwrap_or_default();
-    let s = decode_string_result(&result);
-    if s.is_empty() { "ERC-20".to_string() } else { s }
-}
-
-fn decode_string_result(hex: &str) -> String {
-    // ABI-encoded string: 32 bytes offset + 32 bytes length + data
-    let hex = hex.strip_prefix("0x").unwrap_or(hex);
-    if hex.len() < 128 { return String::new(); }
-    // Length is at bytes 64-128
-    let len_hex = &hex[64..128];
-    let len = usize::from_str_radix(len_hex, 16).unwrap_or(0);
-    if len == 0 || len > 100 { return String::new(); }
-    let data_hex = &hex[128..];
-    let bytes_needed = len * 2;
-    if data_hex.len() < bytes_needed { return String::new(); }
-    let bytes: Vec<u8> = (0..len)
-        .filter_map(|i| u8::from_str_radix(&data_hex[i*2..i*2+2], 16).ok())
-        .collect();
-    String::from_utf8(bytes).unwrap_or_default()
-        .chars().filter(|c| c.is_ascii_graphic() || *c == ' ').collect()
-}
-
-// ─── Transaction receipt (status) ─────────────────────────────────────────
-
-pub async fn get_tx_receipt_status(hash: &str) -> Option<bool> {
-    let params = serde_json::json!([hash]);
-    #[derive(serde::Deserialize)]
-    struct Receipt { status: Option<String> }
-    let receipt: Receipt = rpc_call("eth_getTransactionReceipt", params).await.ok()?;
-    receipt.status.map(|s| s == "0x1")
-}
-
-// ─── Block time average ────────────────────────────────────────────────────
-
-pub async fn get_avg_block_time(sample: u64) -> f64 {
-    let latest = match get_block_number().await {
-        Ok(n) => n,
-        Err(_) => return 0.0,
-    };
-    let mut timestamps: Vec<u64> = Vec::new();
-    for i in 0..sample {
-        if let Ok(b) = get_block_by_number(latest.saturating_sub(i)).await {
-            timestamps.push(b.timestamp);
-        }
-    }
-    if timestamps.len() < 2 { return 0.0; }
-    timestamps.sort();
-    let diffs: Vec<f64> = timestamps.windows(2)
-        .map(|w| (w[1] - w[0]) as f64)
-        .filter(|&d| d > 0.0 && d < 60.0)
-        .collect();
-    if diffs.is_empty() { return 0.0; }
-    diffs.iter().sum::<f64>() / diffs.len() as f64
-}
-
-// ─── WebSocket Real-time Subscription ─────────────────────────────────────
-// Connects to the Telcoin WS RPC and subscribes to newHeads
-// Returns a receiver that gets the block number whenever a new block arrives
-
-use futures::{SinkExt, StreamExt};
-use gloo_net::websocket::{Message, futures::WebSocket};
-
-const WS_RPC: &str = "wss://rpc.telcoin.network";
-
-pub async fn subscribe_new_blocks(
-    mut on_block: impl FnMut(u64) + 'static,
-) {
-    let ws = match WebSocket::open(WS_RPC) {
-        Ok(ws) => ws,
-        Err(_) => {
-            // WS failed — fall back silently, caller handles polling
-            return;
-        }
-    };
-
-    let (mut write, mut read) = ws.split();
-
-    // Send eth_subscribe request
-    let sub_msg = r#"{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}"#;
-    let _ = write.send(Message::Text(sub_msg.to_string())).await;
-
-    // Listen for incoming messages
-    while let Some(msg) = read.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                // Parse subscription notification
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                    // subscription confirmation — ignore
-                    if val.get("id").is_some() { continue; }
-                    // new block notification
-                    if let Some(number_hex) = val
-                        .get("params")
-                        .and_then(|p| p.get("result"))
-                        .and_then(|r| r.get("number"))
-                        .and_then(|n| n.as_str())
-                    {
-                        let block_num = hex_to_u64(number_hex);
-                        on_block(block_num);
-                    }
-                }
-            }
-            Err(_) => break,
-            _ => {}
-        }
-    }
-}
-
-// ─── Get multiple transactions for block detail page ──────────────────────
-
-pub async fn get_transactions_for_block(hashes: &[String]) -> Vec<Transaction> {
-    let mut results = Vec::new();
-    // Fetch up to 50 to avoid overloading RPC
-    for hash in hashes.iter().take(50) {
-        if let Ok(tx) = get_transaction(hash).await {
-            results.push(tx);
-        }
-    }
-    results
-}
-
-// ─── Gas price history for sparkline ─────────────────────────────────────
-// Returns (block_number, gas_used_pct) for recent blocks to show activity
-
-pub async fn get_block_activity(sample: u64) -> Vec<(u64, f64)> {
-    let latest = match get_block_number().await {
-        Ok(n) => n,
-        Err(_) => return vec![],
-    };
-    let mut points = Vec::new();
-    for i in (0..sample).rev() {
-        let num = latest.saturating_sub(i);
-        if let Ok(b) = get_block_by_number(num).await {
-            let pct = if b.gas_limit > 0 {
-                b.gas_used as f64 / b.gas_limit as f64 * 100.0
-            } else { 0.0 };
-            points.push((num, pct));
-        }
-    }
-    points
-}
-
-// ─── Token Info ───────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub struct TokenInfo {
-    pub address:      String,
-    pub name:         String,
-    pub symbol:       String,
-    pub decimals:     u8,
-    pub total_supply: String,
-    pub is_erc20:     bool,
-}
-
-pub async fn get_token_info(address: &str) -> Option<TokenInfo> {
-    // Check it's a contract first
-    if !is_contract(address).await { return None; }
-
-    // Fetch name, symbol, decimals, totalSupply in parallel
-    let (name, symbol, decimals_hex, supply_hex) = futures::join!(
-        get_token_name(address),
-        get_token_symbol(address),
-        eth_call_raw(address, "0x313ce567"), // decimals()
-        eth_call_raw(address, "0x18160ddd")  // totalSupply()
-    );
-
-    if symbol.is_empty() || symbol == "ERC-20" { return None; }
-
-    let decimals = decimals_hex
-        .strip_prefix("0x").unwrap_or(&decimals_hex)
-        .get(..2).and_then(|s| u8::from_str_radix(s, 16).ok())
-        .unwrap_or(18);
-
-    let supply_raw = u128::from_str_radix(
-        supply_hex.strip_prefix("0x").unwrap_or(&supply_hex).trim_start_matches('0'),
-        16
-    ).unwrap_or(0);
-
-    let divisor = 10u128.pow(decimals as u32);
-    let total_supply = if divisor > 0 {
-        format!("{:.4}", supply_raw as f64 / divisor as f64)
+    let (token_name, token_symbol, token_decimals, token_supply) = if is_erc20 {
+        let n = abi_decode_string(
+            &rpc_call::<_, String>("eth_call", abi_call(addr, "0x06fdde03")).await.unwrap_or_default()
+        ).unwrap_or_default();
+        let s = abi_decode_string(
+            &rpc_call::<_, String>("eth_call", abi_call(addr, "0x95d89b41")).await.unwrap_or_default()
+        ).unwrap_or_default();
+        let d = hex_to_u64(
+            &rpc_call::<_, String>("eth_call", abi_call(addr, "0x313ce567")).await.unwrap_or_default()
+        ) as u8;
+        let raw_sup = hex_to_u128(
+            &rpc_call::<_, String>("eth_call", abi_call(addr, "0x18160ddd")).await.unwrap_or_default()
+        );
+        let div = 10u128.pow(d as u32);
+        (n, s, d, if div > 0 { format!("{}", raw_sup / div) } else { raw_sup.to_string() })
     } else {
-        supply_raw.to_string()
+        (String::new(), String::new(), 0u8, String::new())
     };
-
-    Some(TokenInfo {
-        address: address.to_string(),
-        name,
-        symbol,
-        decimals,
-        total_supply,
-        is_erc20: true,
-    })
-}
-
-async fn eth_call_raw(to: &str, data: &str) -> String {
-    let params = serde_json::json!([{"to": to, "data": data}, "latest"]);
-    rpc_call::<serde_json::Value, String>("eth_call", params).await.unwrap_or_default()
-}
-
-// ─── Block time history for sparkline ────────────────────────────────────
-pub async fn get_block_time_history(sample: u64) -> Vec<(u64, f64)> {
-    let latest = match get_block_number().await {
-        Ok(n) => n,
-        Err(_) => return vec![],
-    };
-    let mut points = Vec::new();
-    let mut prev_ts: Option<u64> = None;
-    for i in (0..sample + 1).rev() {
-        let num = latest.saturating_sub(i);
-        if let Ok(b) = get_block_by_number(num).await {
-            if let Some(prev) = prev_ts {
-                let diff = b.timestamp.saturating_sub(prev) as f64;
-                if diff > 0.0 && diff < 60.0 {
-                    points.push((num, diff));
-                }
-            }
-            prev_ts = Some(b.timestamp);
-        }
-    }
-    points
-}
-
-
-// ─── Number formatting helpers ────────────────────────────────────────────
-
-pub fn format_gas(gas: u64) -> String {
-    if gas >= 1_000_000 {
-        format!("{:.1}M", gas as f64 / 1_000_000.0)
-    } else if gas >= 1_000 {
-        format!("{:.0}K", gas as f64 / 1_000.0)
-    } else {
-        gas.to_string()
-    }
-}
-
-pub fn format_number(n: u64) -> String {
-    if n >= 1_000_000 {
-        format!("{:.2}M", n as f64 / 1_000_000.0)
-    } else if n >= 1_000 {
-        format!("{:.1}K", n as f64 / 1_000.0)
-    } else {
-        n.to_string()
-    }
-}
-
-// ─── Epoch Data from ConsensusRegistry ───────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub struct EpochData {
-    pub epoch:            u64,
-    pub start_block:      u64,
-    pub duration_secs:    u64,
-    pub validator_count:  usize,
-    pub validators:       Vec<String>,
-}
-
-/// Get full current epoch data from ConsensusRegistry
-pub async fn get_current_epoch_data() -> Result<EpochData, String> {
-    // Fetch epoch number, validators, and block info in parallel
-    let (epoch_opt, validators_res, latest_block) = futures::join!(
-        get_epoch_info(),
-        get_validators_from_registry(),
-        get_block_number()
-    );
-
-    let epoch = epoch_opt.unwrap_or(0);
-    let validators = validators_res.unwrap_or_default();
-    let latest = latest_block.unwrap_or(0);
-
-    // Estimate epoch start block based on epoch duration
-    // Each epoch is EPOCH_DURATION_HOURS hours
-    // Blocks are ~1s each so epoch_duration_blocks ≈ EPOCH_DURATION_HOURS * 3600
-    let epoch_duration_secs = EPOCH_DURATION_HOURS * 3600;
-    let epoch_duration_blocks = epoch_duration_secs; // ~1 block/sec
-    let start_block = if epoch > 0 {
-        latest.saturating_sub(latest % epoch_duration_blocks)
-    } else { 0 };
-
-    Ok(EpochData {
-        epoch,
-        start_block,
-        duration_secs: epoch_duration_secs,
-        validator_count: validators.len(),
-        validators,
-    })
-}
-
-/// Get validator leader counts from recent blocks (approximation)
-/// Returns Vec<(address, leader_count)>
-pub async fn get_validator_leader_counts(sample_blocks: u64) -> Vec<(String, u64)> {
-    let latest = match get_block_number().await {
-        Ok(n) => n,
-        Err(_) => return vec![],
-    };
-    let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-    for i in 0..sample_blocks {
-        let num = latest.saturating_sub(i);
-        if let Ok(b) = get_block_by_number(num).await {
-            if !b.validator.is_empty() &&
-               b.validator != "0x0000000000000000000000000000000000000000" {
-                *counts.entry(b.validator.to_lowercase()).or_insert(0) += 1;
-            }
-        }
-    }
-    let mut result: Vec<(String, u64)> = counts.into_iter().collect();
-    result.sort_by(|a, b| b.1.cmp(&a.1));
-    result
-}
-
-// ─── Contract detail data ─────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub struct ContractInfo {
-    pub address:       String,
-    pub bytecode_size: usize,   // bytes
-    pub bytecode_hex:  String,  // full bytecode hex
-    pub is_erc20:      bool,
-    pub is_erc721:     bool,
-    pub token_name:    String,
-    pub token_symbol:  String,
-    pub token_decimals: u8,
-    pub token_supply:  String,
-    pub balance:       f64,
-    pub tx_count:      u64,
-    // Common function selectors detected
-    pub has_owner:     bool,
-    pub has_pause:     bool,
-    pub has_mint:      bool,
-}
-
-pub async fn get_contract_info(address: &str) -> Result<ContractInfo, String> {
-    // Get bytecode
-    let params = serde_json::json!([address, "latest"]);
-    let code: String = rpc_call("eth_getCode", params).await.unwrap_or_default();
-    let code_stripped = code.strip_prefix("0x").unwrap_or(&code);
-    let bytecode_size = code_stripped.len() / 2; // hex chars / 2 = bytes
-    let bytecode_hex  = code_stripped.to_string();
-
-    if bytecode_size == 0 {
-        return Err("Not a contract — no bytecode found at this address.".to_string());
-    }
-
-    // Detect standard interfaces by checking bytecode for selectors
-    // ERC-20: transfer(0xa9059cbb), balanceOf(0x70a08231), totalSupply(0x18160ddd)
-    // ERC-721: ownerOf(0x6352211e), tokenURI(0xc87b56dd)
-    let is_erc20  = code_stripped.contains("a9059cbb") && code_stripped.contains("70a08231");
-    let is_erc721 = code_stripped.contains("6352211e") || code_stripped.contains("c87b56dd");
-    let has_owner = code_stripped.contains("8da5cb5b"); // owner()
-    let has_pause = code_stripped.contains("8456cb59") || code_stripped.contains("5c975abb"); // pause()/paused()
-    let has_mint  = code_stripped.contains("40c10f19") || code_stripped.contains("a0712d68"); // mint()
-
-    // Fetch token info + balance + nonce in parallel
-    let (token_info, balance, tx_count) = futures::join!(
-        get_token_info(address),
-        get_balance(address),
-        get_tx_count(address)
-    );
-
-    let (token_name, token_symbol, token_decimals, token_supply) =
-        if let Some(t) = token_info {
-            (t.name, t.symbol, t.decimals, t.total_supply)
-        } else {
-            (String::new(), String::new(), 0u8, String::new())
-        };
 
     Ok(ContractInfo {
-        address: address.to_string(),
+        address: addr.to_string(),
+        balance, tx_count,
+        bytecode_hex: raw.to_string(),
         bytecode_size,
-        bytecode_hex,
-        is_erc20,
-        is_erc721,
-        token_name,
-        token_symbol,
-        token_decimals,
-        token_supply,
-        balance: balance.unwrap_or(0.0),
-        tx_count: tx_count.unwrap_or(0),
-        has_owner,
-        has_pause,
-        has_mint,
+        is_erc20, is_erc721, has_owner, has_pause, has_mint,
+        token_name, token_symbol, token_decimals, token_supply,
     })
 }
 
-// ─── 4byte.directory selector lookup ─────────────────────────────────────
+pub async fn resolve_selectors(bytecode_hex: &str) -> Vec<FunctionSignature> {
+    use gloo_net::http::Request;
+    use std::collections::HashSet;
 
-#[derive(Debug, Clone)]
-pub struct FunctionSignature {
-    pub selector: String,   // e.g. "8da5cb5b"
-    pub signature: String,  // e.g. "owner()"
-}
-
-/// Extract all unique 4-byte selectors from bytecode
-/// Looks for PUSH4 opcode (0x63) followed by 4 bytes
-pub fn extract_selectors(bytecode_hex: &str) -> Vec<String> {
-    let bytes: Vec<u8> = (0..bytecode_hex.len())
-        .step_by(2)
-        .filter_map(|i| u8::from_str_radix(&bytecode_hex[i..i+2], 16).ok())
+    let raw = bytecode_hex.trim_start_matches("0x");
+    let bytes: Vec<u8> = (0..raw.len().saturating_sub(1)).step_by(2)
+        .filter_map(|i| u8::from_str_radix(&raw[i..i+2], 16).ok())
         .collect();
 
-    let mut selectors: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut selectors: HashSet<String> = HashSet::new();
     let mut i = 0;
     while i + 4 < bytes.len() {
-        // PUSH4 opcode = 0x63
-        if bytes[i] == 0x63 && i + 5 <= bytes.len() {
-            let sel = format!("{:02x}{:02x}{:02x}{:02x}",
-                bytes[i+1], bytes[i+2], bytes[i+3], bytes[i+4]);
-            // Filter out unlikely selectors (all zeros, all ff, etc.)
-            if sel != "00000000" && sel != "ffffffff" {
-                selectors.insert(sel);
-            }
+        if bytes[i] == 0x63 {
+            selectors.insert(format!("{:02x}{:02x}{:02x}{:02x}",
+                bytes[i+1], bytes[i+2], bytes[i+3], bytes[i+4]));
             i += 5;
         } else {
             i += 1;
         }
     }
-    let mut result: Vec<String> = selectors.into_iter().collect();
-    result.sort();
-    result
-}
 
-/// Look up a single selector at 4byte.directory
-pub async fn lookup_selector(selector: &str) -> Option<String> {
-    let url = format!("https://www.4byte.directory/api/v1/signatures/?hex_signature=0x{}", selector);
-    let client = gloo_net::http::Request::get(&url)
-        .header("Accept", "application/json")
-        .send().await.ok()?;
-    let text = client.text().await.ok()?;
-    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
-    // Results are in json["results"][0]["text_signature"]
-    json["results"].as_array()?
-        .first()?
-        ["text_signature"].as_str()
-        .map(|s| s.to_string())
-}
-
-/// Resolve up to 30 selectors from bytecode via 4byte.directory
-pub async fn resolve_selectors(bytecode_hex: &str) -> Vec<FunctionSignature> {
-    let selectors = extract_selectors(bytecode_hex);
     let mut results = Vec::new();
-    // Cap at 30 to avoid too many requests
-    for sel in selectors.iter().take(30) {
-        if let Some(sig) = lookup_selector(sel).await {
-            results.push(FunctionSignature {
-                selector: sel.clone(),
-                signature: sig,
-            });
+    for sel in selectors {
+        let url = format!("https://www.4byte.directory/api/v1/signatures/?hex_signature=0x{sel}");
+        if let Ok(resp) = Request::get(&url).send().await {
+            if let Ok(json) = resp.json::<Value>().await {
+                if let Some(sig) = json["results"].as_array()
+                    .and_then(|a| a.first())
+                    .and_then(|r| r["text_signature"].as_str())
+                {
+                    results.push(FunctionSignature { selector: sel, signature: sig.to_string() });
+                }
+            }
         }
     }
-    results.sort_by(|a, b| a.signature.cmp(&b.signature));
+    results.sort_by(|a, b| a.selector.cmp(&b.selector));
     results
+}
+
+// ── Network stats ─────────────────────────────────────────────────────────────
+
+/// getCurrentEpochInfo() → EpochInfo struct
+/// Selector: 0xbabc394f  (from ConsensusRegistry ABI artifact)
+/// EpochInfo: (address[] committee, uint256 epochIssuance, uint64 blockHeight,
+///              uint32 epochId, uint32 epochDuration, uint8 stakeVersion)
+///
+/// ABI return layout (hex chars, 64 per slot):
+///   slot 0  (0..64):    outer offset to struct = 0x20
+///   slot 1  (64..128):  offset to committee[] from struct start = 0xC0 (6 static slots * 32)
+///   slot 2  (128..192): epochIssuance
+///   slot 3  (192..256): blockHeight
+///   slot 4  (256..320): epochId       ← epoch number
+///   slot 5  (320..384): epochDuration
+///   slot 6  (384..448): stakeVersion
+///   committee data at struct_start(64) + committee_offset_bytes*2:
+///     = 64 + 0xC0*2 = 64 + 384 = 448
+///   slot at 448..512:   committee length
+///   slot at 512..576:   committee[0]  (take last 40 chars for address)
+///   slot at 576..640:   committee[1]
+///   ...
+pub async fn get_epoch_info_full() -> Option<(u64, Vec<String>)> {
+    let call = serde_json::json!([{"to": CONSENSUS_REGISTRY, "data": "0xbabc394f"}, "latest"]);
+    let hex: String = match rpc_call("eth_call", call).await {
+        Ok(h) => h,
+        Err(_) => return None,
+    };
+    let raw = hex.trim_start_matches("0x");
+    if raw.len() < 512 { return None; }
+
+    // epochId at slot 4: hex chars 256..320
+    let epoch_id = hex_to_u64(&raw[256..320]);
+
+    // committee array length at hex char 448..512
+    let count = match usize::from_str_radix(&raw[448..512], 16) {
+        Ok(c) if c < 256 => c,
+        _ => return None,
+    };
+
+    let mut addrs = Vec::with_capacity(count);
+    for i in 0..count {
+        let start = 512 + i * 64;
+        if start + 64 > raw.len() { break; }
+        // address is right-padded in 32 bytes, last 40 hex chars
+        let addr = format!("0x{}", &raw[start + 24..start + 64]);
+        addrs.push(addr);
+    }
+
+    if epoch_id > 0 || !addrs.is_empty() {
+        Some((epoch_id, addrs))
+    } else {
+        None
+    }
+}
+
+pub async fn get_epoch_info() -> Option<u64> {
+    get_epoch_info_full().await.map(|(id, _)| id)
+}
+
+pub async fn get_network_stats() -> Result<NetworkStats, String> {
+    let latest_block   = get_block_number().await?;
+    let gas_price_gwei = get_gas_price().await.unwrap_or(0.0);
+    let epoch_number   = get_epoch_info().await;
+    Ok(NetworkStats { latest_block, gas_price_gwei, chain_id: CHAIN_ID, epoch_number })
+}
+
+// ── Validators ────────────────────────────────────────────────────────────────
+
+/// Scan last 50 blocks for unique miner addresses (validators page)
+pub async fn get_validators_from_registry() -> Result<Vec<String>, String> {
+    let latest = get_block_number().await?;
+    let mut seen = std::collections::HashSet::new();
+    for i in 0..50u64 {
+        if let Ok(b) = get_block_by_number(latest.saturating_sub(i)).await {
+            seen.insert(b.validator);
+        }
+    }
+    let mut v: Vec<String> = seen.into_iter().collect();
+    v.sort();
+    Ok(v)
+}
+
+/// getValidators(uint8) — Active = 2
+/// Selector: 0x8cc05eda  (fixed from no-arg call)
+pub async fn get_validators() -> Result<Vec<ValidatorInfo>, String> {
+    let data = "0x8cc05eda0000000000000000000000000000000000000000000000000000000000000002";
+    let call = serde_json::json!([{"to": CONSENSUS_REGISTRY, "data": data}, "latest"]);
+    let hex: String = rpc_call("eth_call", call).await?;
+    Ok(decode_validators(&hex))
+}
+
+fn decode_validators(hex: &str) -> Vec<ValidatorInfo> {
+    let raw = hex.trim_start_matches("0x");
+    if raw.len() < 128 { return vec![]; }
+    let count = match usize::from_str_radix(&raw[64..128], 16) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    let slot = 64usize;
+    let struct_size = 7 * slot;
+    let mut validators = Vec::with_capacity(count);
+    for i in 0..count {
+        let base = 128 + i * struct_size;
+        if base + struct_size > raw.len() { break; }
+        validators.push(ValidatorInfo {
+            address:          format!("0x{}", &raw[base..base+slot][24..]),
+            activation_epoch: hex_to_u32(&raw[base+slot..base+2*slot]),
+            exit_epoch:       hex_to_u32(&raw[base+2*slot..base+3*slot]),
+            status:           hex_to_u32(&raw[base+3*slot..base+4*slot]) as u8,
+            is_retired:       hex_to_u32(&raw[base+4*slot..base+5*slot]) != 0,
+            stake_version:    hex_to_u32(&raw[base+5*slot..base+6*slot]) as u8,
+            region:           hex_to_u32(&raw[base+6*slot..base+7*slot]) as u8,
+        });
+    }
+    validators
+}
+
+/// Get full current epoch data (epochs page)
+/// Uses getCurrentEpochInfo() to get epoch id + committee in one call.
+/// Falls back to block-miner scan for committee if contract call returns empty.
+pub async fn get_current_epoch_data() -> Result<EpochData, String> {
+    let (epoch_full_opt, latest_block) = futures::join!(
+        get_epoch_info_full(),
+        get_block_number(),
+    );
+
+    let latest = latest_block.unwrap_or(0);
+
+    let (epoch, committee) = if let Some((id, addrs)) = epoch_full_opt {
+        (id, addrs)
+    } else {
+        // Fallback: scan recent blocks for miner addresses
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..50u64 {
+            if let Ok(b) = get_block_by_number(latest.saturating_sub(i)).await {
+                seen.insert(b.validator);
+            }
+        }
+        let mut v: Vec<String> = seen.into_iter().collect();
+        v.sort();
+        (0u64, v)
+    };
+
+    let start_block = if epoch > 0 {
+        latest.saturating_sub(latest % (EPOCH_DURATION_HOURS * 3600))
+    } else { 0 };
+
+    Ok(EpochData {
+        epoch,
+        validator_count: committee.len(),
+        validators: committee,
+        start_block,
+        latest_block: latest,
+    })
+}
+
+/// Scan last `n` blocks, return (address, block_count) sorted desc
+pub async fn get_validator_leader_counts(n: u64) -> Vec<(String, u64)> {
+    let latest = match get_block_number().await { Ok(l) => l, Err(_) => return vec![] };
+    let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for i in 0..n {
+        if let Ok(b) = get_block_by_number(latest.saturating_sub(i)).await {
+            *counts.entry(b.validator).or_insert(0) += 1;
+        }
+    }
+    let mut v: Vec<(String, u64)> = counts.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v
 }
