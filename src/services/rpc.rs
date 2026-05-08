@@ -12,7 +12,7 @@ pub const CHAIN_ID:                 u64  = 2017;
 pub const NATIVE_TOKEN:             &str = "TEL";
 pub const CONSENSUS_REGISTRY:       &str = "0x07e17e17e17e17e17e17e17e17e17e17e17e17e1";
 pub const VALIDATOR_STAKE_REQUIRED: &str = "1,000,000";
-pub const EPOCH_DURATION_HOURS:     u64  = 24;
+pub const EPOCH_DURATION_HOURS:     u64  = 8;
 
 // ── Core types ───────────────────────────────────────────────────────────────
 

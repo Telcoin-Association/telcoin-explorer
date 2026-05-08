@@ -412,6 +412,11 @@ pub fn HomePage() -> Element {
                                     }
                                 }
                             }
+                            div { class: "panel-footer",
+                                Link { to: Route::TransactionsPage { page: 0 }, class: "panel-view-all-footer",
+                                    "View All Transactions →"
+                                }
+                            }
                         }
                     }
                 }

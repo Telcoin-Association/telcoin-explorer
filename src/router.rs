@@ -7,6 +7,7 @@ use crate::pages::{
     block::BlockPage,
     blocks::BlocksPage,
     transaction::TransactionPage,
+    transactions::TransactionsPage,
     address::AddressPage,
     token::TokenPage,
     validators::ValidatorsPage,
@@ -22,6 +23,8 @@ pub enum Route {
         BlocksPage { page: u64 },
         #[route("/block/:block_number")]
         BlockPage { block_number: u64 },
+        #[route("/txs/:page")]
+        TransactionsPage { page: u64 },
         #[route("/tx/:hash")]
         TransactionPage { hash: String },
         #[route("/address/:address")]
@@ -32,7 +35,6 @@ pub enum Route {
         ValidatorsPage {},
         #[route("/epochs")]
         EpochsPage {},
-
         #[route("/contract/:address")]
         ContractPage { address: String },
     #[end_layout]

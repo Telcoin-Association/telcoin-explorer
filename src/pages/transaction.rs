@@ -2,19 +2,19 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_tx_receipt_status,get_transaction, Transaction, format_tel, shorten_hash};
+    get_tx_receipt_status, get_transaction, Transaction, format_tel, shorten_hash};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
 pub fn TransactionPage(hash: String) -> Element {
-    let tx: Signal<Option<Transaction>> = use_signal(|| None);
-    let loading = use_signal(|| true);
-    let error: Signal<Option<String>>   = use_signal(|| None);
+    let tx: Signal<Option<Transaction>>      = use_signal(|| None);
+    let loading                              = use_signal(|| true);
+    let error: Signal<Option<String>>        = use_signal(|| None);
     let mut tx_success: Signal<Option<bool>> = use_signal(|| None);
     let hash_clone = hash.clone();
 
     use_effect(move || {
-        let hash    = hash_clone.clone();
+        let hash       = hash_clone.clone();
         let mut tx      = tx.clone();
         let mut loading = loading.clone();
         let mut error   = error.clone();
@@ -32,9 +32,6 @@ pub fn TransactionPage(hash: String) -> Element {
 
     rsx! {
         div { class: "page",
-            h1 { class: "page-title",
-                "Transaction " span { "{shorten_hash(&hash)}" }
-            }
 
             if *loading.read() {
                 Loading { msg: Some("Fetching transaction…".to_string()) }
@@ -64,7 +61,10 @@ pub fn TransactionPage(hash: String) -> Element {
                             }
                             div { class: "detail-row",
                                 div { class: "detail-key", "Transaction Hash" }
-                                div { class: "detail-val", "{t.hash}" }
+                                div { class: "detail-val mono-wrap",
+                                    "{t.hash}"
+                                    CopyButton { text: t.hash.clone() }
+                                }
                             }
                             div { class: "detail-row",
                                 div { class: "detail-key", "Block" }
@@ -84,6 +84,7 @@ pub fn TransactionPage(hash: String) -> Element {
                                     Link { to: Route::AddressPage { address: t.from.clone() },
                                         span { class: "hash-cell", "{t.from}" }
                                     }
+                                    CopyButton { text: t.from.clone() }
                                 }
                             }
                             div { class: "detail-row",
@@ -93,6 +94,7 @@ pub fn TransactionPage(hash: String) -> Element {
                                         Link { to: Route::AddressPage { address: to.clone() },
                                             span { class: "hash-cell", "{to}" }
                                         }
+                                        CopyButton { text: to.clone() }
                                     } else {
                                         span { class: "chip pending", "Contract Creation" }
                                     }
@@ -101,7 +103,7 @@ pub fn TransactionPage(hash: String) -> Element {
                             div { class: "detail-row",
                                 div { class: "detail-key", "Value" }
                                 div { class: "detail-val",
-                                    span { class: "tx-value-big", "{format_tel(t.value_tel)}" }
+                                    span { class: "tx-value-big", "{format_tel(t.value_tel)} TEL" }
                                 }
                             }
                             div { class: "detail-row",
@@ -116,7 +118,7 @@ pub fn TransactionPage(hash: String) -> Element {
                             div { class: "detail-row",
                                 div { class: "detail-key", "Gas Price" }
                                 div { class: "detail-val",
-                                    { format!("{:.4} Gwei  ({} wei)", t.gas_price as f64 / 1e9, t.gas_price) }
+                                    { format!("{:.4} Gwei ({} wei)", t.gas_price as f64 / 1e9, t.gas_price) }
                                 }
                             }
                             div { class: "detail-row",
@@ -141,14 +143,13 @@ pub fn TransactionPage(hash: String) -> Element {
                         }
                     }
 
-                    // ── Decoded input panel ─────────────────────────────
+                    // ── Input Data panel ────────────────────────────────
                     div { class: "detail-panel",
                         div { class: "detail-panel-title", "Input Data" }
                         div { class: "detail-table",
                             if t.input == "0x" || t.input.is_empty() {
                                 div { class: "empty-state", "No input data (simple TEL transfer)" }
                             } else {
-                                // Decoded method
                                 if let Some(decoded) = &t.decoded_input {
                                     div { class: "detail-row",
                                         div { class: "detail-key", "Method" }
@@ -179,7 +180,6 @@ pub fn TransactionPage(hash: String) -> Element {
                                         }
                                     }
                                 }
-                                // Raw hex
                                 div { class: "detail-row",
                                     div { class: "detail-key", "Raw Hex" }
                                     div { class: "detail-val",

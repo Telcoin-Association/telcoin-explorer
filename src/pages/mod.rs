@@ -2,12 +2,10 @@ pub mod home;
 pub mod block;
 pub mod blocks;
 pub mod transaction;
+pub mod transactions;
 pub mod address;
 pub mod validators;
 pub mod not_found;
-
 pub mod token;
-
 pub mod epochs;
-
 pub mod contract;

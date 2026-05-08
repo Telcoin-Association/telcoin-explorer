@@ -65,8 +65,12 @@ pub fn BlocksPage(page: u64) -> Element {
                             Link { to: Route::BlocksPage { page: next_page },
                                 span { class: "page-btn-link", "Older →" }
                             }
+                            Link { to: Route::BlocksPage { page: total_pages },
+                                span { class: "page-btn-link", "Oldest »" }
+                            }
                         } else {
                             span { class: "page-btn-link disabled", "Older →" }
+                            span { class: "page-btn-link disabled", "Oldest »" }
                         }
                     }
                 }
@@ -193,8 +197,12 @@ pub fn BlocksPage(page: u64) -> Element {
                             Link { to: Route::BlocksPage { page: next_page },
                                 span { class: "page-btn-link", "Older" }
                             }
+                            Link { to: Route::BlocksPage { page: total_pages },
+                                span { class: "page-btn-link", "Oldest »" }
+                            }
                         } else {
                             span { class: "page-btn-link disabled", "Older" }
+                            span { class: "page-btn-link disabled", "Oldest »" }
                         }
                     }
                 }

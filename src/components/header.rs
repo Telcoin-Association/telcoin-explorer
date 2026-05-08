@@ -34,11 +34,22 @@ pub fn Header() -> Element {
                 }
                 div { style: "flex:1;" }
                 nav { class: "header-nav",
+                    Link { to: Route::BlocksPage { page: 0 },
+                        class: "header-nav-link",
+                        "Blocks"
+                    }
+                    Link { to: Route::TransactionsPage { page: 0 },
+                        class: "header-nav-link",
+                        "Transactions"
+                    }
                     Link { to: Route::EpochsPage {},
                         class: "header-nav-link",
                         "Epochs"
                     }
-                    Link { to: Route::ValidatorsPage {}, "Validators" }
+                    Link { to: Route::ValidatorsPage {},
+                        class: "header-nav-link",
+                        "Validators"
+                    }
                     a {
                         href: "https://telcoin.network/faucet",
                         target: "_blank",
