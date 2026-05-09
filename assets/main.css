@@ -705,6 +705,9 @@ input  { font-family: inherit; }
 .contract-fn-result-label { color: var(--text-muted); font-size: 11px; font-weight: 600; flex-shrink: 0; }
 .contract-fn-result-value { font-family: var(--font-mono); color: var(--accent-green); }
 .contract-fn-error { margin-top: 8px; padding: 8px 12px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: var(--radius-sm); font-size: 12px; color: #ef4444; }
+.abi-upload-textarea { width: 100%; min-height: 120px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px; font-family: var(--font-mono); padding: 10px 12px; resize: vertical; transition: border-color 0.15s; }
+.abi-upload-textarea:focus { outline: none; border-color: var(--tel-blue); box-shadow: 0 0 0 2px rgba(45,206,255,0.1); }
+.abi-upload-textarea::placeholder { color: var(--text-muted); font-family: var(--font-ui); }
 
 
 
