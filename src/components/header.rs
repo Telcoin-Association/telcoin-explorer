@@ -8,6 +8,17 @@ const CHAIN_NAME:   &str = "Telcoin Network Adiri Testnet";
 const RPC_URL:      &str = "https://rpc.telcoin.network";
 const EXPLORER_URL: &str = "https://www.telscan.xyz";
 
+fn ls_get(key: &str) -> String {
+    js_sys::eval(&format!("localStorage.getItem('{}') || ''", key))
+        .ok().and_then(|v| v.as_string()).unwrap_or_default()
+}
+fn ls_set(key: &str, val: &str) {
+    let _ = js_sys::eval(&format!("localStorage.setItem('{}','{}')", key, val));
+}
+fn ls_remove(key: &str) {
+    let _ = js_sys::eval(&format!("localStorage.removeItem('{}')", key));
+}
+
 #[component]
 pub fn Header() -> Element {
     let mut dark_mode                              = use_signal(|| true);
@@ -24,6 +35,39 @@ pub fn Header() -> Element {
             html.remove_attribute("data-theme").ok();
         } else {
             html.set_attribute("data-theme", "light").ok();
+        }
+    });
+
+    // Restore wallet from localStorage on mount
+    use_effect(move || {
+        if wallet_address.read().is_none() {
+            let saved = ls_get("wallet_address");
+            if !saved.is_empty() {
+                wasm_bindgen_futures::spawn_local(async move {
+                    let js = r#"(async function(){
+                        if(!window.ethereum) return null;
+                        try {
+                            const a = await window.ethereum.request({method:'eth_accounts'});
+                            return (a && a.length) ? a[0] : null;
+                        } catch(e) { return null; }
+                    })()"#;
+                    if let Ok(pv) = js_sys::eval(js) {
+                        if let Ok(r) = wasm_bindgen_futures::JsFuture::from(
+                            js_sys::Promise::from(pv)
+                        ).await {
+                            if let Some(current) = r.as_string() {
+                                if current.to_lowercase() == saved.to_lowercase() {
+                                    wallet_address.set(Some(saved));
+                                } else {
+                                    ls_remove("wallet_address");
+                                }
+                            } else {
+                                ls_remove("wallet_address");
+                            }
+                        }
+                    }
+                });
+            }
         }
     });
 
@@ -72,6 +116,7 @@ pub fn Header() -> Element {
                     Link { to: Route::TransactionsPage { page: 0 }, class: "header-nav-link", "Transactions" }
                     Link { to: Route::EpochsPage {},             class: "header-nav-link", "Epochs" }
                     Link { to: Route::ValidatorsPage {},         class: "header-nav-link", "Validators" }
+
                     // Wallet
                     if let Some(ref addr) = *wallet_address.read() {
                         Link {
@@ -84,7 +129,11 @@ pub fn Header() -> Element {
                         button {
                             class: "wallet-disconnect",
                             title: "Disconnect",
-                            onclick: move |_| { wallet_address.set(None); wallet_error.set(None); },
+                            onclick: move |_| {
+                                wallet_address.set(None);
+                                wallet_error.set(None);
+                                ls_remove("wallet_address");
+                            },
                             "×"
                         }
                     } else {
@@ -93,8 +142,12 @@ pub fn Header() -> Element {
                             onclick: move |_| {
                                 wasm_bindgen_futures::spawn_local(async move {
                                     match connect_wallet().await {
-                                        Ok(addr) => { wallet_error.set(None); wallet_address.set(Some(addr)); }
-                                        Err(e)   => wallet_error.set(Some(e)),
+                                        Ok(addr) => {
+                                            wallet_error.set(None);
+                                            ls_set("wallet_address", &addr);
+                                            wallet_address.set(Some(addr));
+                                        }
+                                        Err(e) => wallet_error.set(Some(e)),
                                     }
                                 });
                             },
@@ -116,14 +169,16 @@ pub fn Header() -> Element {
                     button {
                         class: "theme-toggle",
                         title: if *dark_mode.read() { "Switch to light" } else { "Switch to dark" },
-                        onclick: move |_: Event<MouseData>| { let cur = *dark_mode.read(); dark_mode.set(!cur); },
+                        onclick: move |_: Event<MouseData>| {
+                            let cur = *dark_mode.read();
+                            dark_mode.set(!cur);
+                        },
                         if *dark_mode.read() { "☀" } else { "🌙" }
                     }
                 }
 
                 // ── Mobile right side: wallet + hamburger ─────────────
                 div { class: "mobile-nav-right",
-                    // Show wallet state on mobile too
                     if let Some(ref addr) = *wallet_address.read() {
                         Link {
                             to: Route::AddressPage { address: addr.clone() },
@@ -132,12 +187,10 @@ pub fn Header() -> Element {
                             { format!("{}…{}", &addr[..6], &addr[addr.len()-4..]) }
                         }
                     }
-                    // Hamburger button
                     button {
                         class: "hamburger",
                         onclick: move |_| { let cur = *menu_open.read(); menu_open.set(!cur); },
                         if *menu_open.read() {
-                            // X icon
                             svg { width: "22", height: "22", view_box: "0 0 24 24", fill: "none",
                                 stroke: "currentColor", stroke_width: "2",
                                 stroke_linecap: "round", stroke_linejoin: "round",
@@ -145,7 +198,6 @@ pub fn Header() -> Element {
                                 path { d: "m6 6 12 12" }
                             }
                         } else {
-                            // Burger icon
                             svg { width: "22", height: "22", view_box: "0 0 24 24", fill: "none",
                                 stroke: "currentColor", stroke_width: "2",
                                 stroke_linecap: "round", stroke_linejoin: "round",
@@ -161,7 +213,6 @@ pub fn Header() -> Element {
             // ── Mobile dropdown menu ──────────────────────────────────
             if *menu_open.read() {
                 div { class: "mobile-menu",
-                    // Mobile search
                     div { class: "mobile-menu-search",
                         input {
                             class: "header-search-input",
@@ -186,20 +237,23 @@ pub fn Header() -> Element {
                             }
                         }
                     }
-                    // Nav links
                     Link { to: Route::HomePage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Home" }
                     Link { to: Route::BlocksPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Blocks" }
                     Link { to: Route::TransactionsPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Transactions" }
                     Link { to: Route::EpochsPage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Epochs" }
                     Link { to: Route::ValidatorsPage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Validators" }
-                    // Wallet in menu
                     if let Some(ref addr) = *wallet_address.read() {
                         div { class: "mobile-menu-wallet",
                             span { class: "wallet-dot" }
                             span { style: "font-family:var(--font-mono); font-size:12px;", "{addr}" }
                             button {
                                 class: "wallet-disconnect",
-                                onclick: move |_| { wallet_address.set(None); wallet_error.set(None); menu_open.set(false); },
+                                onclick: move |_| {
+                                    wallet_address.set(None);
+                                    wallet_error.set(None);
+                                    menu_open.set(false);
+                                    ls_remove("wallet_address");
+                                },
                                 "Disconnect"
                             }
                         }
@@ -210,18 +264,25 @@ pub fn Header() -> Element {
                                 menu_open.set(false);
                                 wasm_bindgen_futures::spawn_local(async move {
                                     match connect_wallet().await {
-                                        Ok(addr) => { wallet_error.set(None); wallet_address.set(Some(addr)); }
-                                        Err(e)   => wallet_error.set(Some(e)),
+                                        Ok(addr) => {
+                                            wallet_error.set(None);
+                                            ls_set("wallet_address", &addr);
+                                            wallet_address.set(Some(addr));
+                                        }
+                                        Err(e) => wallet_error.set(Some(e)),
                                     }
                                 });
                             },
                             "Connect Wallet"
                         }
                     }
-                    // Theme toggle in menu
                     button {
                         class: "mobile-nav-link mobile-theme-btn",
-                        onclick: move |_| { let cur = *dark_mode.read(); dark_mode.set(!cur); menu_open.set(false); },
+                        onclick: move |_| {
+                            let cur = *dark_mode.read();
+                            dark_mode.set(!cur);
+                            menu_open.set(false);
+                        },
                         if *dark_mode.read() { "☀ Light Mode" } else { "🌙 Dark Mode" }
                     }
                 }
