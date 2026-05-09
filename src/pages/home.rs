@@ -98,12 +98,7 @@ pub fn HomePage() -> Element {
             // ── Hero ─────────────────────────────────────────────────
             div { class: "hero",
                 div { class: "hero-inner",
-                    h1 { class: "hero-title",
-                        "The Telcoin Network"
-                        br {}
-                        span { class: "hero-title-accent", "Blockchain Explorer" }
-                    }
-                    div { class: "hero-search-box",
+div { class: "hero-search-box",
                         input {
                             class: "hero-search-input",
                             id: "home-search",
