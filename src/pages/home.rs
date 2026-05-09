@@ -127,14 +127,7 @@ pub fn HomePage() -> Element {
                             }
                         }
                     }
-                    div { class: "hero-hints",
-                        span { "Supported: " }
-                        span { class: "hint-tag", "0x Address" }
-                        span { class: "hint-tag", "Tx Hash" }
-                        span { class: "hint-tag", "Block #" }
-                        span { class: "hint-tag", "Token" }
-                        span { class: "hint-tag", "Contract" }
-                    }
+
                 }
             }
 
