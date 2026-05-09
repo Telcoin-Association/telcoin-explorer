@@ -663,13 +663,18 @@ input  { font-family: inherit; }
 
 @media (max-width: 768px) {
   :root { --PAD: 16px; }
-  .header-inner { height: 54px; }
+  .header-inner { height: 54px; gap: 8px; }
   .logo-badge { display: none; }
+  .header-nav { gap: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-shrink: 1; min-width: 0; }
+  .header-nav-link { font-size: 12px; padding: 5px 8px; white-space: nowrap; }
+  .header-nav-faucet { font-size: 11px; padding: 4px 8px; white-space: nowrap; }
+  .theme-toggle { padding: 4px 7px; font-size: 13px; flex-shrink: 0; }
   .hero { padding: 24px 0 28px; }
   .hero-title { font-size: 22px; }
   .hero-search-input { font-size: 13px; }
-  .hero-cards-col { flex-direction: row; gap: 10px; }
+  .hero-cards-col { flex-direction: row; gap: 10px; margin-top: 0; }
   .hero-gas-value { font-size: 17px; }
+  .hero-top-row { gap: 14px; }
 
   /* Stats 2-col */
   .stats-strip-card { grid-template-columns: repeat(2, 1fr); }
@@ -688,10 +693,13 @@ input  { font-family: inherit; }
 
   /* Hide less important columns */
   .home-table-header { display: none; }
-  .home-block-row { grid-template-columns: 28px 1fr 50px 1fr; gap: 8px; padding: 10px 14px; }
+  .home-block-row { grid-template-columns: auto 1fr 42px; gap: 8px; padding: 10px 12px; }
   .home-block-row .hbr-gas { display: none; }
-  .home-tx-row { grid-template-columns: 24px 1fr 75px 1fr; gap: 8px; padding: 10px 14px; }
-  .home-tx-row .htr-to, .home-tx-row .htr-value { display: none; }
+  .home-block-row .hbr-leader { display: none; }
+  .home-tx-row { grid-template-columns: auto 1fr 70px; gap: 8px; padding: 10px 12px; }
+  .home-tx-row .htr-to { display: none; }
+  .home-tx-row .htr-block { display: none; }
+  .home-tx-row .htr-from { display: none; }
 
   /* Detail */
   .detail-row { grid-template-columns: 90px 1fr; }
@@ -721,9 +729,9 @@ input  { font-family: inherit; }
 }
 
 @media (max-width: 480px) {
-  .hero-title { font-size: 19px; }
-  .hero-cards-col { flex-direction: column; }
-  .hero-gas-card, .hero-block-time-card { width: 100%; }
+  .hero-title { font-size: 18px; }
+  .hero-cards-col { flex-direction: row; }
+  .hero-gas-card, .hero-block-time-card { flex: 1; width: auto; min-width: 0; }
   .stats-strip-card { grid-template-columns: repeat(2, 1fr); }
   .stat-row-value { font-size: 13px; }
   .epoch-stat-grid { grid-template-columns: repeat(2, 1fr); }
