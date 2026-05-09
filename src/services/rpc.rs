@@ -116,7 +116,7 @@ pub struct ContractInfo {
     pub token_supply:   String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FunctionSignature {
     pub selector:  String,
     pub signature: String,
@@ -632,7 +632,7 @@ pub async fn resolve_selectors(bytecode_hex: &str) -> Vec<FunctionSignature> {
 ///   slot at 576..640:   committee[1]
 ///   ...
 pub async fn get_epoch_info_full() -> Option<(u64, Vec<String>)> {
-    let call = serde_json::json!([{"to": CONSENSUS_REGISTRY, "data": "0xbabc394f"}, "latest"]);
+    let call = serde_json::json!([{"to": CONSENSUS_REGISTRY, "data": "0xe6f7e7bc"}, "latest"]);
     let hex: String = match rpc_call("eth_call", call).await {
         Ok(h) => h,
         Err(_) => return None,
@@ -695,7 +695,7 @@ pub async fn get_validators_from_registry() -> Result<Vec<String>, String> {
 /// getValidators(uint8) — Active = 2
 /// Selector: 0x8cc05eda  (fixed from no-arg call)
 pub async fn get_validators() -> Result<Vec<ValidatorInfo>, String> {
-    let data = "0x8cc05eda0000000000000000000000000000000000000000000000000000000000000002";
+    let data = "0x5d0c55070000000000000000000000000000000000000000000000000000000000000002";
     let call = serde_json::json!([{"to": CONSENSUS_REGISTRY, "data": data}, "latest"]);
     let hex: String = rpc_call("eth_call", call).await?;
     Ok(decode_validators(&hex))
