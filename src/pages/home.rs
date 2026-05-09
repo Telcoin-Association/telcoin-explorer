@@ -94,46 +94,6 @@ pub fn HomePage() -> Element {
 
     rsx! {
         div {
-
-            // ── Hero ─────────────────────────────────────────────────
-            div { class: "hero",
-                div { class: "hero-inner",
-div { class: "hero-search-box",
-                        input {
-                            class: "hero-search-input",
-                            id: "home-search",
-                            placeholder: "Search by Address / Tx Hash / Block / Token / Contract",
-                            onkeydown: move |e: Event<KeyboardData>| {
-                                if e.key() == Key::Enter { run_search(); }
-                            }
-                        }
-                        button {
-                            class: "hero-search-btn",
-                            onclick: move |_: Event<MouseData>| { run_search(); },
-                            svg {
-                                width: "18", height: "18",
-                                view_box: "0 0 24 24",
-                                fill: "none",
-                                stroke: "currentColor",
-                                stroke_width: "2.5",
-                                stroke_linecap: "round",
-                                stroke_linejoin: "round",
-                                circle { cx: "11", cy: "11", r: "8" }
-                                path { d: "m21 21-4.35-4.35" }
-                            }
-                        }
-                    }
-                    div { class: "hero-hints",
-                        span { "Supported: " }
-                        span { class: "hint-tag", "0x Address" }
-                        span { class: "hint-tag", "Tx Hash" }
-                        span { class: "hint-tag", "Block #" }
-                        span { class: "hint-tag", "Token" }
-                        span { class: "hint-tag", "Contract" }
-                    }
-                }
-            }
-
             // ── Stats + Panels ────────────────────────────────────────
             div { class: "home-content",
                 div { class: "stats-strip-card",

@@ -14,27 +14,19 @@ const SCAN_BLOCKS: u64 = 200;
 
 #[component]
 pub fn AddressPage(address: String) -> Element {
-    let balance: Signal<Option<f64>>         = use_signal(|| None);
-    let tx_count: Signal<Option<u64>>        = use_signal(|| None);
-    let transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
-    let native_txs: Signal<Vec<Transaction>>  = use_signal(|| vec![]);
-    let loading                              = use_signal(|| true);
-    let txs_loading                          = use_signal(|| true);
-    let error: Signal<Option<String>>        = use_signal(|| None);
+    let mut balance: Signal<Option<f64>>         = use_signal(|| None);
+    let mut tx_count: Signal<Option<u64>>        = use_signal(|| None);
+    let mut transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
+    let mut native_txs: Signal<Vec<Transaction>>  = use_signal(|| vec![]);
+    let mut loading                              = use_signal(|| true);
+    let mut txs_loading                          = use_signal(|| true);
+    let mut error: Signal<Option<String>>        = use_signal(|| None);
     let mut active_tab                       = use_signal(|| "txs");
     let mut contract_flag: Signal<bool>      = use_signal(|| false);
     let addr_clone = address.clone();
 
     use_effect(move || {
-        let address           = addr_clone.clone();
-        let mut balance       = balance.clone();
-        let mut tx_count      = tx_count.clone();
-        let mut transfers     = transfers.clone();
-        let mut native_txs    = native_txs.clone();
-        let mut loading       = loading.clone();
-        let mut txs_loading   = txs_loading.clone();
-        let mut error         = error.clone();
-        let mut contract_flag = contract_flag.clone();
+        let address = addr_clone.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
