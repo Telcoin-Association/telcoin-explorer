@@ -21,22 +21,13 @@ fn ls_remove(key: &str) {
 
 #[component]
 pub fn Header() -> Element {
-    let mut dark_mode                              = use_signal(|| true);
     let mut wallet_address: Signal<Option<String>> = use_signal(|| None);
     let mut wallet_error: Signal<Option<String>>   = use_signal(|| None);
     let mut menu_open                              = use_signal(|| false);
 
-    use_effect(move || {
-        let is_dark = *dark_mode.read();
-        let window = web_sys::window().unwrap();
-        let doc = window.document().unwrap();
-        let html = doc.document_element().unwrap();
-        if is_dark {
-            html.remove_attribute("data-theme").ok();
-        } else {
-            html.set_attribute("data-theme", "light").ok();
-        }
-    });
+    // Check current route to hide search on home page
+    let route: Route = use_route();
+    let is_home = matches!(route, Route::HomePage {});
 
     // Restore wallet from localStorage on mount
     use_effect(move || {
@@ -86,25 +77,27 @@ pub fn Header() -> Element {
                     }
                 }
 
-                // ── Search (desktop) ──────────────────────────────────
-                div { class: "header-search-box",
-                    input {
-                        class: "header-search-input",
-                        id: "header-search",
-                        placeholder: "Search address / tx hash / block…",
-                        onkeydown: move |e: Event<KeyboardData>| {
-                            if e.key() == Key::Enter { run_header_search(); }
+                // ── Search (hidden on home page) ───────────────────────
+                if !is_home {
+                    div { class: "header-search-box",
+                        input {
+                            class: "header-search-input",
+                            id: "header-search",
+                            placeholder: "Search address / tx hash / block…",
+                            onkeydown: move |e: Event<KeyboardData>| {
+                                if e.key() == Key::Enter { run_header_search(); }
+                            }
                         }
-                    }
-                    button {
-                        class: "header-search-btn",
-                        onclick: move |_: Event<MouseData>| { run_header_search(); },
-                        svg {
-                            width: "15", height: "15", view_box: "0 0 24 24",
-                            fill: "none", stroke: "currentColor",
-                            stroke_width: "2.5", stroke_linecap: "round", stroke_linejoin: "round",
-                            circle { cx: "11", cy: "11", r: "8" }
-                            path { d: "m21 21-4.35-4.35" }
+                        button {
+                            class: "header-search-btn",
+                            onclick: move |_: Event<MouseData>| { run_header_search(); },
+                            svg {
+                                width: "15", height: "15", view_box: "0 0 24 24",
+                                fill: "none", stroke: "currentColor",
+                                stroke_width: "2.5", stroke_linecap: "round", stroke_linejoin: "round",
+                                circle { cx: "11", cy: "11", r: "8" }
+                                path { d: "m21 21-4.35-4.35" }
+                            }
                         }
                     }
                 }
@@ -165,16 +158,6 @@ pub fn Header() -> Element {
                     if let Some(ref err) = *wallet_error.read() {
                         span { class: "wallet-error", title: "{err}", "⚠" }
                     }
-
-                    button {
-                        class: "theme-toggle",
-                        title: if *dark_mode.read() { "Switch to light" } else { "Switch to dark" },
-                        onclick: move |_: Event<MouseData>| {
-                            let cur = *dark_mode.read();
-                            dark_mode.set(!cur);
-                        },
-                        if *dark_mode.read() { "☀" } else { "🌙" }
-                    }
                 }
 
                 // ── Mobile right side: wallet + hamburger ─────────────
@@ -213,6 +196,7 @@ pub fn Header() -> Element {
             // ── Mobile dropdown menu ──────────────────────────────────
             if *menu_open.read() {
                 div { class: "mobile-menu",
+                    // Search in mobile menu (always show)
                     div { class: "mobile-menu-search",
                         input {
                             class: "header-search-input",
@@ -275,15 +259,6 @@ pub fn Header() -> Element {
                             },
                             "Connect Wallet"
                         }
-                    }
-                    button {
-                        class: "mobile-nav-link mobile-theme-btn",
-                        onclick: move |_| {
-                            let cur = *dark_mode.read();
-                            dark_mode.set(!cur);
-                            menu_open.set(false);
-                        },
-                        if *dark_mode.read() { "☀ Light Mode" } else { "🌙 Dark Mode" }
                     }
                 }
             }

@@ -127,7 +127,7 @@ input  { font-family: inherit; }
 
 /* ── HEADER SEARCH ────────────────────────────────────────────────── */
 .header-search-box {
-  display: flex; align-items: stretch; flex: 0 1 220px; min-width: 0;
+  display: flex; align-items: stretch; flex: 0 1 480px; min-width: 0;
   background: rgba(255,255,255,0.05); border: 1px solid var(--border-mid);
   border-radius: var(--radius-sm); overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -191,15 +191,20 @@ input  { font-family: inherit; }
   line-height: 1.2; margin-bottom: 20px;
 }
 .hero-title-accent { color: var(--tel-blue); }
+.hero-title {
+  font-size: 28px; font-weight: 800; color: #fff;
+  line-height: 1.2; margin-bottom: 20px;
+}
 
 /* Search */
 .hero-search-box {
   display: flex; align-items: stretch;
   background: rgba(255,255,255,0.06);
-  border: 1.5px solid rgba(255,255,255,0.12);
+  border: 1.5px solid rgba(255,255,255,0.15);
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
+  max-width: 680px;
 }
 .hero-search-box:focus-within {
   border-color: var(--tel-blue);
@@ -701,24 +706,7 @@ input  { font-family: inherit; }
 .contract-fn-result-value { font-family: var(--font-mono); color: var(--accent-green); }
 .contract-fn-error { margin-top: 8px; padding: 8px 12px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: var(--radius-sm); font-size: 12px; color: #ef4444; }
 
-/* ── LIGHT THEME ──────────────────────────────────────────────────── */
-[data-theme="light"] {
-  --bg-base:        #f0f4f8;
-  --bg-surface:     #e8edf2;
-  --bg-card:        #ffffff;
-  --bg-input:       #ffffff;
-  --text-primary:   #0f172a;
-  --text-secondary: #334155;
-  --text-muted:     #64748b;
-  --border:         #cbd5e1;
-  --border-subtle:  #e2e8f0;
-  --border-mid:     #94a3b8;
-  --tel-blue:       #0284c7;
-  --tel-blue-dim:   rgba(2,132,199,0.08);
-  --tel-blue-border:rgba(2,132,199,0.25);
-}
-[data-theme="light"] .hero { background: linear-gradient(180deg, #0a1628 0%, #0f2040 60%, #1a3a6b 100%) !important; }
-[data-theme="light"] html { background: #f0f4f8; }
+
 
 /* ── RESPONSIVE ───────────────────────────────────────────────────── */
 @media (max-width: 1200px) {

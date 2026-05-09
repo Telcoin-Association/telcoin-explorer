@@ -94,6 +94,50 @@ pub fn HomePage() -> Element {
 
     rsx! {
         div {
+            // ── Hero with search ──────────────────────────────────────
+            div { class: "hero",
+                div { class: "hero-inner",
+                    h1 { class: "hero-title",
+                        "The "
+                        span { class: "hero-title-accent", "Telcoin Network" }
+                        " Explorer"
+                    }
+                    div { class: "hero-search-box",
+                        input {
+                            class: "hero-search-input",
+                            id: "home-search",
+                            placeholder: "Search by address, tx hash, block number, token or contract",
+                            onkeydown: move |e: Event<KeyboardData>| {
+                                if e.key() == Key::Enter { run_search(); }
+                            }
+                        }
+                        button {
+                            class: "hero-search-btn",
+                            onclick: move |_: Event<MouseData>| { run_search(); },
+                            svg {
+                                width: "18", height: "18",
+                                view_box: "0 0 24 24",
+                                fill: "none",
+                                stroke: "currentColor",
+                                stroke_width: "2.5",
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                circle { cx: "11", cy: "11", r: "8" }
+                                path { d: "m21 21-4.35-4.35" }
+                            }
+                        }
+                    }
+                    div { class: "hero-hints",
+                        span { "Supported: " }
+                        span { class: "hint-tag", "0x Address" }
+                        span { class: "hint-tag", "Tx Hash" }
+                        span { class: "hint-tag", "Block #" }
+                        span { class: "hint-tag", "Token" }
+                        span { class: "hint-tag", "Contract" }
+                    }
+                }
+            }
+
             // ── Stats + Panels ────────────────────────────────────────
             div { class: "home-content",
                 div { class: "stats-strip-card",
@@ -137,7 +181,6 @@ pub fn HomePage() -> Element {
 
                 // ── Panels ────────────────────────────────────────────
                 div { class: "dual-col",
-
                     // ── Latest Blocks ──────────────────────────────────
                     div { class: "panel",
                         div { class: "panel-header",
@@ -318,14 +361,14 @@ pub fn HomePage() -> Element {
 fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
     let icon = match label.as_str() {
         "LATEST BLOCK" => rsx! {
-            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round", class:"stat-icon",
+            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
                 path { d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }
                 path { d:"M3.27 6.96 12 12.01l8.73-5.05" }
                 path { d:"M12 22.08V12" }
             }
         },
         "TRANSACTIONS" => rsx! {
-            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round", class:"stat-icon",
+            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
                 path { d:"M8 3H5a2 2 0 0 0-2 2v3" }
                 path { d:"M21 8V5a2 2 0 0 0-2-2h-3" }
                 path { d:"M3 16v3a2 2 0 0 0 2 2h3" }
@@ -335,13 +378,13 @@ fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
             }
         },
         "CHAIN ID" => rsx! {
-            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round", class:"stat-icon",
+            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
                 path { d:"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" }
                 path { d:"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" }
             }
         },
         _ => rsx! {
-            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round", class:"stat-icon",
+            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
                 circle { cx:"12", cy:"12", r:"10" }
                 path { d:"M12 8v4" }
                 path { d:"M12 16h.01" }
