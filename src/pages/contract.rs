@@ -11,13 +11,11 @@ use crate::services::rpc::{
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 // ── Static ABI types (ConsensusRegistry) ─────────────────────────────────
-
 #[derive(Clone, Debug, PartialEq)]
 struct AbiParam {
     name: &'static str,
     ty:   &'static str,
 }
-
 #[derive(Clone, Debug, PartialEq)]
 struct AbiFunction {
     name:        &'static str,
@@ -28,13 +26,11 @@ struct AbiFunction {
 }
 
 // ── Dynamic ABI types (uploaded JSON) ────────────────────────────────────
-
 #[derive(Clone, Debug, PartialEq)]
 struct DynParam {
     name: String,
     ty:   String,
 }
-
 #[derive(Clone, Debug, PartialEq)]
 struct DynFunction {
     name:        String,
@@ -45,7 +41,6 @@ struct DynFunction {
 }
 
 // ── ConsensusRegistry ABI ─────────────────────────────────────────────────
-
 const CONSENSUS_ABI: &[AbiFunction] = &[
     AbiFunction { name: "getCurrentEpoch",        selector: "03dc7d1f", mutability: "view",        inputs: &[], output_desc: "uint32 epoch" },
     AbiFunction { name: "getCurrentEpochInfo",    selector: "e6f7e7bc", mutability: "view",        inputs: &[], output_desc: "tuple (committee[], epochIssuance, blockHeight, epochId, epochDuration, stakeVersion)" },
@@ -108,9 +103,13 @@ const CONSENSUS_ABI: &[AbiFunction] = &[
     AbiFunction { name: "allocateIssuance",      selector: "785b8291", mutability: "payable", inputs: &[], output_desc: "" },
 ];
 
-// ── Pure helper functions (NO RSX, NO format! with JS strings) ───────────
+// ── ABI encoding ──────────────────────────────────────────────────────────
 
-fn abi_encode_param(ty: &str, value: &str) -> Result<String, String> {
+fn is_dynamic_type(ty: &str) -> bool {
+    ty == "string" || ty == "bytes" || ty.ends_with("[]")
+}
+
+fn abi_encode_static(ty: &str, value: &str) -> Result<String, String> {
     let v = value.trim();
     match ty {
         "address" => {
@@ -133,6 +132,55 @@ fn abi_encode_param(ty: &str, value: &str) -> Result<String, String> {
     }
 }
 
+fn abi_encode_dynamic(ty: &str, value: &str) -> Result<String, String> {
+    let v = value.trim();
+    match ty {
+        "string" => {
+            let bytes = v.as_bytes();
+            let len = bytes.len();
+            let len_hex = format!("{:0>64x}", len);
+            let data_hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+            let pad = if len % 32 == 0 { 0 } else { 32 - (len % 32) };
+            Ok(format!("{}{}{}", len_hex, data_hex, "00".repeat(pad)))
+        }
+        "bytes" => {
+            let hex = v.trim_start_matches("0x");
+            let len = hex.len() / 2;
+            let len_hex = format!("{:0>64x}", len);
+            let pad = if len % 32 == 0 { 0 } else { 32 - (len % 32) };
+            Ok(format!("{}{}{}", len_hex, hex, "00".repeat(pad)))
+        }
+        _ => Err(format!("Unsupported dynamic type: {}", ty))
+    }
+}
+
+fn build_calldata(selector: &str, types: &[String], values: &[String]) -> Result<String, String> {
+    let n = types.len();
+    let mut heads: Vec<String> = Vec::new();
+    let mut tails: Vec<String> = Vec::new();
+    let base_offset = 32 * n;
+    let mut dyn_offset = base_offset;
+    for (i, ty) in types.iter().enumerate() {
+        let val = values.get(i).map(|s| s.as_str()).unwrap_or("");
+        if is_dynamic_type(ty) {
+            heads.push(format!("{:0>64x}", dyn_offset));
+            let tail = abi_encode_dynamic(ty, val)?;
+            dyn_offset += tail.len() / 2;
+            tails.push(tail);
+        } else {
+            heads.push(abi_encode_static(ty, val)?);
+        }
+    }
+    let mut result = format!("0x{}", selector);
+    for h in &heads { result.push_str(h); }
+    for t in &tails { result.push_str(t); }
+    Ok(result)
+}
+
+fn abi_encode_param(ty: &str, value: &str) -> Result<String, String> {
+    abi_encode_static(ty, value)
+}
+
 fn decode_result(hex: &str, output_desc: &str) -> String {
     let raw = hex.trim_start_matches("0x");
     if raw.is_empty() || raw == "0" { return "(empty)".to_string(); }
@@ -150,7 +198,6 @@ fn decode_result(hex: &str, output_desc: &str) -> String {
             }
         }
     }
-    // Try to decode as ABI-encoded string (offset + length + data)
     if raw.len() >= 128 {
         if let Ok(len) = u64::from_str_radix(raw.get(64..128).unwrap_or("0").trim_start_matches('0').get(0..).unwrap_or("0"), 16) {
             let byte_len = (len as usize) * 2;
@@ -169,15 +216,6 @@ fn decode_result(hex: &str, output_desc: &str) -> String {
     if raw.len() > 80 { format!("0x{}…", &raw[..80]) } else { format!("0x{}", raw) }
 }
 
-/// Build JS string for eth_call (no format! with {} — uses concat)
-fn js_eth_call(addr: &str, data: &str) -> String {
-    [
-        r#"(async function(){try{const r=await window.ethereum.request({method:"eth_call","#,
-        r#"params:[{"to":""#, addr, r#"","data":""#, data, r#""},"latest"]});return{result:r};}catch(e){return{error:e.message};}})()"#,
-    ].concat()
-}
-
-/// Build JS string for eth_sendTransaction (no format! with {})
 fn js_send_tx(addr: &str, data: &str) -> String {
     [
         r#"(async function(){if(!window.ethereum)return{error:"No wallet"};try{"#,
@@ -189,7 +227,6 @@ fn js_send_tx(addr: &str, data: &str) -> String {
     ].concat()
 }
 
-/// Save ABI JSON to localStorage (no format! with JS braces)
 fn ls_save_abi(address: &str, json_str: &str) {
     let key = ["abi_", &address.to_lowercase()].concat();
     if let Ok(escaped) = serde_json::to_string(json_str) {
@@ -198,21 +235,18 @@ fn ls_save_abi(address: &str, json_str: &str) {
     }
 }
 
-/// Load ABI JSON from localStorage
 fn ls_load_abi(address: &str) -> String {
     let key = ["abi_", &address.to_lowercase()].concat();
     let js = ["(localStorage.getItem(", &serde_json::to_string(&key).unwrap_or_default(), ")||'')"].concat();
     js_sys::eval(&js).ok().and_then(|v| v.as_string()).unwrap_or_default()
 }
 
-/// Clear ABI from localStorage
 fn ls_clear_abi(address: &str) {
     let key = ["abi_", &address.to_lowercase()].concat();
     let js = ["localStorage.removeItem(", &serde_json::to_string(&key).unwrap_or_default(), ")"].concat();
     let _ = js_sys::eval(&js);
 }
 
-/// Parse ABI JSON into DynFunction vec
 fn parse_abi_json(json_str: &str) -> Vec<DynFunction> {
     if json_str.trim().is_empty() { return vec![]; }
     let escaped = json_str
@@ -254,17 +288,11 @@ fn parse_abi_json(json_str: &str) -> Vec<DynFunction> {
         let sig         = parts[2].to_string();
         let inputs_raw  = if parts.len() > 3 { parts[3] } else { "" };
         let output_desc = if parts.len() > 4 { parts[4].to_string() } else { String::new() };
-        // Compute 4-byte selector via JS keccak
-        let sel_js = format!("(function(){{var s={};var b=new TextEncoder().encode(s);return crypto.subtle.digest('SHA-256',b).then(function(h){{var a=new Uint8Array(h);return Array.from(a.slice(0,4)).map(function(x){{return x.toString(16).padStart(2,'0')}}).join('');}});}})();", serde_json::to_string(&sig).unwrap_or_default());
-        // For now use a simple approach - just use the sig as a display key
-        // Real keccak would need wasm crypto, too complex; use sig hash approximation
-        // Use keccak256 from sha3.min.js loaded in index.html
         let sel_key = serde_json::to_string(&sig).unwrap_or_default();
         let keccak_js = ["window.keccak256?window.keccak256(", &sel_key, ").slice(0,8):'00000000'"].concat();
         let selector = js_sys::eval(&keccak_js)
             .ok().and_then(|v| v.as_string())
             .unwrap_or_else(|| "00000000".to_string());
-        let _ = sel_js;
         let inputs = if inputs_raw.is_empty() {
             vec![]
         } else {
@@ -279,7 +307,6 @@ fn parse_abi_json(json_str: &str) -> Vec<DynFunction> {
     }).collect()
 }
 
-/// Execute JS promise and extract result/error strings
 async fn exec_js_promise(js: &str) -> (Option<String>, Option<String>) {
     match js_sys::eval(js) {
         Ok(pv) => {
@@ -289,8 +316,8 @@ async fn exec_js_promise(js: &str) -> (Option<String>, Option<String>) {
                     let ek = wasm_bindgen::JsValue::from_str("error");
                     let rk = wasm_bindgen::JsValue::from_str("result");
                     let hk = wasm_bindgen::JsValue::from_str("hash");
-                    let err  = js_sys::Reflect::get(&obj, &ek).ok().and_then(|v| v.as_string());
-                    let res  = js_sys::Reflect::get(&obj, &rk).ok().and_then(|v| v.as_string())
+                    let err = js_sys::Reflect::get(&obj, &ek).ok().and_then(|v| v.as_string());
+                    let res = js_sys::Reflect::get(&obj, &rk).ok().and_then(|v| v.as_string())
                         .or_else(|| js_sys::Reflect::get(&obj, &hk).ok().and_then(|v| v.as_string()));
                     (res, err)
                 }
@@ -301,8 +328,200 @@ async fn exec_js_promise(js: &str) -> (Option<String>, Option<String>) {
     }
 }
 
-// ── Page component ────────────────────────────────────────────────────────
+/// Build the JS that renders a DynFnCard entirely in vanilla JS
+/// Returns a JS string that injects the card into the container div
+fn build_dyncard_js(
+    container_id: &str,
+    func: &DynFunction,
+    addr: &str,
+    is_write: bool,
+    all_funcs: &[DynFunction],
+    rpc_url: &str,
+) -> String {
+    // Serialize inputs as JSON for JS consumption
+    let inputs_json = serde_json::to_string(
+        &func.inputs.iter().map(|p| serde_json::json!({"name": p.name, "ty": p.ty})).collect::<Vec<_>>()
+    ).unwrap_or_else(|_| "[]".to_string());
 
+    // Serialize reader map: param_bare_name -> {selector, output_desc}
+    let reader_map: std::collections::HashMap<String, serde_json::Value> = all_funcs.iter()
+        .filter(|f| (f.mutability == "view" || f.mutability == "pure") && f.inputs.is_empty())
+        .map(|f| (f.name.to_lowercase(), serde_json::json!({"sel": f.selector, "out": f.output_desc})))
+        .collect();
+    let readers_json = serde_json::to_string(&reader_map).unwrap_or_else(|_| "{}".to_string());
+
+    let is_write_js = if is_write { "true" } else { "false" };
+    let sel = &func.selector;
+    let fn_name = &func.name;
+    let output_desc = &func.output_desc;
+
+    [
+        r#"(function(){
+var cid="#, &serde_json::to_string(container_id).unwrap_or_default(), r#";
+var el=document.getElementById(cid);
+if(!el)return;
+var fnName="#, &serde_json::to_string(fn_name).unwrap_or_default(), r#";
+var sel="#, &serde_json::to_string(sel).unwrap_or_default(), r#";
+var inputs="#, &inputs_json, r#";
+var readers="#, &readers_json, r#";
+var addr="#, &serde_json::to_string(addr).unwrap_or_default(), r#";
+var rpc="#, &serde_json::to_string(rpc_url).unwrap_or_default(), r#";
+var isWrite="#, is_write_js, r#";
+var outDesc="#, &serde_json::to_string(output_desc).unwrap_or_default(), r#";
+
+// Build input fields HTML
+var fieldsHtml='';
+inputs.forEach(function(p,i){
+  fieldsHtml+='<div class="contract-fn-input-row">';
+  fieldsHtml+='<label class="contract-fn-label"><span class="contract-fn-param-name">'+p.name+'</span><span class="contract-fn-param-type"> ('+p.ty+')</span></label>';
+  fieldsHtml+='<input class="contract-fn-input" id="'+cid+'-'+i+'" placeholder="'+p.ty+'">';
+  fieldsHtml+='</div>';
+});
+
+var btnClass=isWrite?'contract-fn-btn contract-fn-btn-write':'contract-fn-btn contract-fn-btn-read';
+var btnLabel=isWrite?'Send Transaction':'Query';
+var prefillBtn=isWrite&&inputs.length>0?'<button class="contract-fn-btn contract-fn-btn-read" style="padding:3px 10px;font-size:11px;margin-left:auto;" id="'+cid+'-prefill">Pre-fill current values</button>':'';
+
+el.innerHTML=
+  '<div class="contract-fn-header">'+
+  '<span class="contract-fn-name">'+fnName+'</span>'+
+  (outDesc?'<span class="contract-fn-returns">→ '+outDesc+'</span>':'')+
+  '</div>'+
+  fieldsHtml+
+  '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">'+
+  prefillBtn+
+  '<button class="'+btnClass+'" id="'+cid+'-btn">'+btnLabel+'</button>'+
+  '</div>'+
+  '<div id="'+cid+'-result" style="display:none"></div>'+
+  '<div id="'+cid+'-error" style="display:none"></div>';
+
+// ABI encode helpers
+function encodeStatic(ty,v){
+  v=(v||'').trim();
+  if(ty==='address'){var a=v.replace('0x','').toLowerCase();if(a.length!==40)throw'Invalid address: '+v;return a.padStart(64,'0');}
+  if(/^u?int/.test(ty)){var n=BigInt(v);return n.toString(16).padStart(64,'0');}
+  if(ty==='bool'){return(v==='true'||v==='1'?1:0).toString(16).padStart(64,'0');}
+  return v.replace('0x','').padEnd(64,'0');
+}
+function encodeDynamic(ty,v){
+  v=(v||'').trim();
+  if(ty==='string'||ty==='bytes'){
+    var bytes=new TextEncoder().encode(v);
+    var len=bytes.length.toString(16).padStart(64,'0');
+    var hex=Array.from(bytes).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
+    var pad=bytes.length%32===0?0:32-(bytes.length%32);
+    return len+hex+'00'.repeat(pad);
+  }
+  throw'Unsupported dynamic type: '+ty;
+}
+function isDynamic(ty){return ty==='string'||ty==='bytes'||ty.endsWith('[]');}
+function buildCalldata(sel,inputs,values){
+  var n=inputs.length;
+  var heads=[];var tails=[];var dynOffset=32*n;
+  inputs.forEach(function(p,i){
+    var ty=p.ty;var v=values[i]||'';
+    if(isDynamic(ty)){heads.push(dynOffset.toString(16).padStart(64,'0'));var t=encodeDynamic(ty,v);dynOffset+=t.length/2;tails.push(t);}
+    else{heads.push(encodeStatic(ty,v));}
+  });
+  return'0x'+sel+heads.join('')+tails.join('');
+}
+
+// Decode result
+function decodeResult(hex,outDesc){
+  var raw=hex.replace('0x','');
+  if(!raw||raw==='0')return'(empty)';
+  if(outDesc&&outDesc.includes('address')&&raw.length>=64)return'0x'+raw.slice(-40);
+  if(outDesc==='bool'&&raw.length>=64)return parseInt(raw.slice(-1),16)===1?'true':'false';
+  if(outDesc&&(outDesc.includes('uint')||outDesc.includes('int'))&&!outDesc.includes('tuple')&&raw.length<=64){
+    try{return BigInt('0x'+raw.replace(/^0+/,'')||'0').toString();}catch(e){}
+  }
+  // Try ABI string decode
+  if(raw.length>=128){
+    try{
+      var len=parseInt(raw.slice(64,128),16);
+      var data=raw.slice(128,128+len*2);
+      var bytes=[];
+      for(var i=0;i<data.length;i+=2)bytes.push(parseInt(data.slice(i,i+2),16));
+      var s=new TextDecoder().decode(new Uint8Array(bytes));
+      if(s&&s.split('').every(function(c){var code=c.charCodeAt(0);return code>=32||code===10;}))return s;
+    }catch(e){}
+  }
+  return raw.length>80?'0x'+raw.slice(0,80)+'…':'0x'+raw;
+}
+
+// Show result/error
+function showResult(text){
+  var r=document.getElementById(cid+'-result');
+  if(r){r.className='contract-fn-result';r.innerHTML='<span class="contract-fn-result-label">Result:</span> <span class="contract-fn-result-value">'+text+'</span>';r.style.display='';}
+}
+function showError(text){
+  var e=document.getElementById(cid+'-error');
+  if(e){e.className='contract-fn-error';e.textContent='⚠ '+text;e.style.display='';}
+}
+function clearOutput(){
+  var r=document.getElementById(cid+'-result');var e=document.getElementById(cid+'-error');
+  if(r)r.style.display='none';if(e)e.style.display='none';
+}
+
+// Prefill button
+var prefillEl=document.getElementById(cid+'-prefill');
+if(prefillEl){
+  prefillEl.addEventListener('click',function(){
+    prefillEl.textContent='Loading…';prefillEl.disabled=true;
+    var pending=inputs.length;
+    if(pending===0){prefillEl.textContent='Pre-fill current values';prefillEl.disabled=false;return;}
+    var done=0;
+    inputs.forEach(function(p,i){
+      var bare=p.name.replace(/^_/,'').toLowerCase();
+      var reader=readers[bare];
+      if(!reader){done++;if(done>=pending){prefillEl.textContent='Pre-fill current values';prefillEl.disabled=false;}return;}
+      fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',method:'eth_call',params:[{to:addr,data:'0x'+reader.sel},'latest'],id:1})
+      }).then(function(r){return r.json();}).then(function(d){
+        var val=decodeResult(d.result||'',reader.out);
+        var inp=document.getElementById(cid+'-'+i);
+        if(inp)inp.value=val;
+        done++;if(done>=pending){prefillEl.textContent='Pre-fill current values';prefillEl.disabled=false;}
+      }).catch(function(){done++;if(done>=pending){prefillEl.textContent='Pre-fill current values';prefillEl.disabled=false;}});
+    });
+  });
+}
+
+// Submit button
+var btn=document.getElementById(cid+'-btn');
+if(btn){
+  btn.addEventListener('click',function(){
+    clearOutput();
+    var values=inputs.map(function(_,i){var inp=document.getElementById(cid+'-'+i);return inp?inp.value:'';});
+    var calldata;
+    try{calldata=buildCalldata(sel,inputs,values);}
+    catch(e){showError(e.toString());return;}
+    btn.disabled=true;btn.textContent=isWrite?'Sending…':'Querying…';
+    if(!isWrite){
+      fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',method:'eth_call',params:[{to:addr,data:calldata},'latest'],id:1})
+      }).then(function(r){return r.json();}).then(function(d){
+        if(d.error)showError(JSON.stringify(d.error));
+        else showResult(decodeResult(d.result||'',outDesc));
+      }).catch(function(e){showError(e.toString());})
+      .finally(function(){btn.disabled=false;btn.textContent=btnLabel;});
+    } else {
+      if(!window.ethereum){showError('No wallet connected');btn.disabled=false;btn.textContent=btnLabel;return;}
+      window.ethereum.request({method:'eth_accounts'}).then(function(accounts){
+        if(!accounts||!accounts.length){showError('No wallet connected');btn.disabled=false;btn.textContent=btnLabel;return;}
+        return window.ethereum.request({method:'eth_sendTransaction',params:[{from:accounts[0],to:addr,data:calldata,gas:'0x30000'}]});
+      }).then(function(hash){
+        if(hash)showResult('Tx: '+hash);
+      }).catch(function(e){showError(e.message||'Transaction failed');})
+      .finally(function(){btn.disabled=false;btn.textContent=btnLabel;});
+    }
+  });
+}
+})();"#
+    ].concat()
+}
+
+// ── Page component ────────────────────────────────────────────────────────
 #[component]
 pub fn ContractPage(address: String) -> Element {
     let mut info: Signal<Option<ContractInfo>>         = use_signal(|| None);
@@ -314,22 +533,17 @@ pub fn ContractPage(address: String) -> Element {
     let mut active_tab                                 = use_signal(|| "overview");
     let mut uploaded_abi: Signal<Vec<DynFunction>>     = use_signal(|| vec![]);
     let mut abi_input                                  = use_signal(|| String::new());
-    let mut abi_msg: Signal<Option<(bool, String)>>    = use_signal(|| None); // (is_ok, msg)
-
+    let mut abi_msg: Signal<Option<(bool, String)>>    = use_signal(|| None);
     let mut fn_inputs:  Signal<std::collections::HashMap<String, Vec<String>>> = use_signal(|| std::collections::HashMap::new());
     let mut fn_results: Signal<std::collections::HashMap<String, String>>      = use_signal(|| std::collections::HashMap::new());
     let mut fn_loading: Signal<std::collections::HashMap<String, bool>>        = use_signal(|| std::collections::HashMap::new());
     let mut fn_errors:  Signal<std::collections::HashMap<String, String>>      = use_signal(|| std::collections::HashMap::new());
-
     let addr_clone = address.clone();
-
     use_effect(move || {
         let address = addr_clone.clone();
-        // Try loading saved ABI — wait for keccak256 to be available first
         let saved_json = ls_load_abi(&address);
         if !saved_json.is_empty() {
             wasm_bindgen_futures::spawn_local(async move {
-                // Poll until keccak256 is available (sha3 CDN script may not be loaded yet)
                 for _ in 0..20 {
                     let ready = js_sys::eval("typeof keccak256 === 'function'")
                         .ok().and_then(|v| v.as_bool()).unwrap_or(false);
@@ -370,11 +584,9 @@ pub fn ContractPage(address: String) -> Element {
             loading.set(false);
         });
     });
-
-    let is_registry     = address.to_lowercase() == CONSENSUS_REGISTRY.to_lowercase();
-    let avatar_char     = address.chars().nth(2).unwrap_or('C').to_uppercase().next().unwrap_or('C');
-    let has_upload      = !uploaded_abi.read().is_empty();
-
+    let is_registry = address.to_lowercase() == CONSENSUS_REGISTRY.to_lowercase();
+    let avatar_char = address.chars().nth(2).unwrap_or('C').to_uppercase().next().unwrap_or('C');
+    let has_upload  = !uploaded_abi.read().is_empty();
     rsx! {
         div { class: "page",
             if *loading.read() {
@@ -389,8 +601,6 @@ pub fn ContractPage(address: String) -> Element {
                     }
                 }
             } else if let Some(contract) = info.read().as_ref() {
-
-                // ── Header ────────────────────────────────────────────
                 div { class: "contract-header",
                     div { class: "contract-avatar",
                         if contract.is_erc20 || contract.is_erc721 {
@@ -425,8 +635,6 @@ pub fn ContractPage(address: String) -> Element {
                         }
                     }
                 }
-
-                // ── Tabs ──────────────────────────────────────────────
                 div { class: "tabs-row",
                     button { class: if *active_tab.read() == "overview"  { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("overview"),  "Overview" }
                     button { class: if *active_tab.read() == "read"      { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("read"),      "Read Contract" }
@@ -458,8 +666,6 @@ pub fn ContractPage(address: String) -> Element {
                         Link { to: Route::EpochsPage {},     button { class: "tab-btn", "Epochs →" } }
                     }
                 }
-
-                // ── Overview tab ──────────────────────────────────────
                 if *active_tab.read() == "overview" {
                     div { class: "detail-panel",
                         div { class: "detail-panel-title", "Contract Information" }
@@ -536,8 +742,6 @@ pub fn ContractPage(address: String) -> Element {
                             }
                         }
                     }
-
-                    // ── ABI Upload (non-registry only) ────────────────
                     if !is_registry {
                         div { class: "detail-panel",
                             div { class: "detail-panel-title",
@@ -608,8 +812,6 @@ pub fn ContractPage(address: String) -> Element {
                         }
                     }
                 }
-
-                // ── Read Contract tab ─────────────────────────────────
                 if *active_tab.read() == "read" {
                     div { class: "detail-panel",
                         div { class: "detail-panel-title",
@@ -625,7 +827,7 @@ pub fn ContractPage(address: String) -> Element {
                                 }
                             } else if has_upload {
                                 for func in uploaded_abi.read().iter().filter(|f| f.mutability == "view" || f.mutability == "pure").cloned().collect::<Vec<_>>() {
-                                    DynFnCard { func, addr: address.clone(), is_write: false, fn_results, fn_loading, fn_errors }
+                                    DynFnCard { func: func.clone(), addr: address.clone(), is_write: false, all_funcs: uploaded_abi.read().clone() }
                                 }
                             } else {
                                 div { class: "info-note", style: "margin:16px 20px;",
@@ -647,8 +849,6 @@ pub fn ContractPage(address: String) -> Element {
                         }
                     }
                 }
-
-                // ── Write Contract tab ────────────────────────────────
                 if *active_tab.read() == "write" {
                     div { class: "detail-panel",
                         div { class: "detail-panel-title",
@@ -668,7 +868,7 @@ pub fn ContractPage(address: String) -> Element {
                                 }
                             } else if has_upload {
                                 for func in uploaded_abi.read().iter().filter(|f| f.mutability == "nonpayable" || f.mutability == "payable").cloned().collect::<Vec<_>>() {
-                                    DynFnCard { func, addr: address.clone(), is_write: true, fn_results, fn_loading, fn_errors }
+                                    DynFnCard { func: func.clone(), addr: address.clone(), is_write: true, all_funcs: uploaded_abi.read().clone() }
                                 }
                             } else {
                                 div { class: "info-note", style: "margin:16px 20px;",
@@ -690,8 +890,6 @@ pub fn ContractPage(address: String) -> Element {
                         }
                     }
                 }
-
-                // ── Transfers tab ─────────────────────────────────────
                 if *active_tab.read() == "transfers" {
                     div { class: "panel",
                         div { class: "panel-header",
@@ -722,8 +920,6 @@ pub fn ContractPage(address: String) -> Element {
                         }
                     }
                 }
-
-                // ── Bytecode tab ──────────────────────────────────────
                 if *active_tab.read() == "bytecode" {
                     div { class: "bytecode-unverified-banner",
                         div { class: "bub-icon",
@@ -789,7 +985,6 @@ pub fn ContractPage(address: String) -> Element {
 }
 
 // ── StaticFnCard — ConsensusRegistry typed ABI ────────────────────────────
-
 #[component]
 fn StaticFnCard(
     func: AbiFunction,
@@ -806,7 +1001,6 @@ fn StaticFnCard(
     let result  = fn_results.read().get(&key).cloned();
     let loading = fn_loading.read().get(&key).copied().unwrap_or(false);
     let err     = fn_errors.read().get(&key).cloned();
-
     rsx! {
         div { class: "contract-fn-card",
             div { class: "contract-fn-header",
@@ -857,31 +1051,23 @@ fn StaticFnCard(
                             fn_errors.write().remove(&key);
                             fn_results.write().remove(&key);
                             wasm_bindgen_futures::spawn_local(async move {
-                                let mut data = sel.clone();
-                                let mut enc_err: Option<String> = None;
-                                for (i, (_, ty)) in idefs.iter().enumerate() {
-                                    match abi_encode_param(ty, vals.get(i).map(|s| s.as_str()).unwrap_or("")) {
-                                        Ok(e) => data.push_str(&e),
-                                        Err(e) => { enc_err = Some(e); break; }
+                                let types: Vec<String> = idefs.iter().map(|(_, t)| t.clone()).collect();
+                                match build_calldata(&sel, &types, &vals) {
+                                    Ok(calldata) => {
+                                        if !iw {
+                                            let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
+                                            match rpc_call::<_, String>("eth_call", params).await {
+                                                Ok(hex) => { fn_results.write().insert(key.clone(), decode_result(&hex, &out)); }
+                                                Err(e)  => { fn_errors.write().insert(key.clone(), e); }
+                                            }
+                                        } else {
+                                            let js = js_send_tx(&addr, &calldata);
+                                            let (res, err) = exec_js_promise(&js).await;
+                                            if let Some(r) = res { fn_results.write().insert(key.clone(), format!("Tx: {}", r)); }
+                                            if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
+                                        }
                                     }
-                                }
-                                if let Some(e) = enc_err {
-                                    fn_errors.write().insert(key.clone(), e);
-                                    fn_loading.write().insert(key.clone(), false);
-                                    return;
-                                }
-                                let calldata = ["0x", &data].concat();
-                                if !iw {
-                                    let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
-                                    match rpc_call::<_, String>("eth_call", params).await {
-                                        Ok(hex) => { fn_results.write().insert(key.clone(), decode_result(&hex, &out)); }
-                                        Err(e)  => { fn_errors.write().insert(key.clone(), e); }
-                                    }
-                                } else {
-                                    let js = js_send_tx(&addr, &calldata);
-                                    let (res, err) = exec_js_promise(&js).await;
-                                    if let Some(r) = res { fn_results.write().insert(key.clone(), format!("Tx: {}", r)); }
-                                    if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
+                                    Err(e) => { fn_errors.write().insert(key.clone(), e); }
                                 }
                                 fn_loading.write().insert(key.clone(), false);
                             });
@@ -905,120 +1091,39 @@ fn StaticFnCard(
     }
 }
 
-// ── DynFnCard — uploaded ABI ──────────────────────────────────────────────
-
+// ── DynFnCard — pure JS rendering, bypasses Dioxus input issues ───────────
 #[component]
 fn DynFnCard(
     func: DynFunction,
     addr: String,
     is_write: bool,
-    mut fn_results: Signal<std::collections::HashMap<String, String>>,
-    mut fn_loading: Signal<std::collections::HashMap<String, bool>>,
-    mut fn_errors:  Signal<std::collections::HashMap<String, String>>,
+    all_funcs: Vec<DynFunction>,
 ) -> Element {
-    let key     = func.selector.clone();
-    let n       = func.inputs.len();
-    let mut vals: Signal<Vec<String>> = use_signal(|| vec![String::new(); n]);
-    let result  = fn_results.read().get(&key).cloned();
-    let loading = fn_loading.read().get(&key).copied().unwrap_or(false);
-    let err     = fn_errors.read().get(&key).cloned();
-
+    let container_id = format!("dyncard-{}-{}", func.selector, if is_write { "w" } else { "r" });
+    let js = build_dyncard_js(
+        &container_id,
+        &func,
+        &addr,
+        is_write,
+        &all_funcs,
+        "https://rpc.telcoin.network",
+    );
+    use_effect(move || {
+        // Small delay to ensure DOM is ready
+        let js2 = js.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(50).await;
+            let _ = js_sys::eval(&js2);
+        });
+    });
     rsx! {
         div { class: "contract-fn-card",
-            div { class: "contract-fn-header",
-                span { class: "contract-fn-name", "{func.name}" }
-                if func.mutability == "payable" { span { class: "chip pending", style: "font-size:10px;", "payable" } }
-                if !func.output_desc.is_empty() { span { class: "contract-fn-returns", "→ {func.output_desc}" } }
-            }
-            for (i, param) in func.inputs.iter().enumerate() {
-                div { class: "contract-fn-input-row",
-                    label { class: "contract-fn-label",
-                        span { class: "contract-fn-param-name", "{param.name}" }
-                        span { class: "contract-fn-param-type", " ({param.ty})" }
-                    }
-                    input {
-                        class: "contract-fn-input",
-                        placeholder: "{param.ty}",
-                        value: { vals.read().get(i).cloned().unwrap_or_default() },
-                        oninput: move |e: Event<FormData>| {
-                            let mut v = vals.write();
-                            if i < v.len() { v[i] = e.value(); }
-                        }
-                    }
-                }
-            }
-            div { class: "contract-fn-actions",
-                button {
-                    class: if is_write { "contract-fn-btn contract-fn-btn-write" } else { "contract-fn-btn contract-fn-btn-read" },
-                    disabled: loading,
-                    onclick: {
-                        let key    = key.clone();
-                        let sel    = func.selector.clone();
-                        let inputs = func.inputs.clone();
-                        let out    = func.output_desc.clone();
-                        let addr   = addr.clone();
-                        let iw     = is_write;
-                        move |_| {
-                            let key    = key.clone();
-                            let sel    = sel.clone();
-                            let inputs = inputs.clone();
-                            let out    = out.clone();
-                            let addr   = addr.clone();
-                            let cur    = vals.read().clone();
-                            fn_loading.write().insert(key.clone(), true);
-                            fn_errors.write().remove(&key);
-                            fn_results.write().remove(&key);
-                            wasm_bindgen_futures::spawn_local(async move {
-                                let mut data = sel.clone();
-                                let mut enc_err: Option<String> = None;
-                                for (i, p) in inputs.iter().enumerate() {
-                                    match abi_encode_param(&p.ty, cur.get(i).map(|s| s.as_str()).unwrap_or("")) {
-                                        Ok(e) => data.push_str(&e),
-                                        Err(e) => { enc_err = Some(e); break; }
-                                    }
-                                }
-                                if let Some(e) = enc_err {
-                                    fn_errors.write().insert(key.clone(), e);
-                                    fn_loading.write().insert(key.clone(), false);
-                                    return;
-                                }
-                                let calldata = ["0x", &data].concat();
-                                if !iw {
-                                    let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
-                                    match rpc_call::<_, String>("eth_call", params).await {
-                                        Ok(hex) => { fn_results.write().insert(key.clone(), decode_result(&hex, &out)); }
-                                        Err(e)  => { fn_errors.write().insert(key.clone(), e); }
-                                    }
-                                } else {
-                                    let js = js_send_tx(&addr, &calldata);
-                                    let (res, err) = exec_js_promise(&js).await;
-                                    if let Some(r) = res { fn_results.write().insert(key.clone(), format!("Tx: {}", r)); }
-                                    if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
-                                }
-                                fn_loading.write().insert(key.clone(), false);
-                            });
-                        }
-                    },
-                    if loading { span { class: "spinner", style: "width:12px;height:12px;border-width:2px;" } }
-                    else if is_write { "Send Transaction" }
-                    else { "Query" }
-                }
-            }
-            if let Some(ref res) = result {
-                div { class: "contract-fn-result",
-                    span { class: "contract-fn-result-label", "Result:" }
-                    span { class: "contract-fn-result-value", "{res}" }
-                }
-            }
-            if let Some(ref e) = err {
-                div { class: "contract-fn-error", "⚠ {e}" }
-            }
+            div { id: "{container_id}" }
         }
     }
 }
 
 // ── GenericFnCard — 4byte signatures, raw hex input ───────────────────────
-
 #[component]
 fn GenericFnCard(
     sig: FunctionSignature,
@@ -1033,7 +1138,6 @@ fn GenericFnCard(
     let result  = fn_results.read().get(&key).cloned();
     let err     = fn_errors.read().get(&key).cloned();
     let mut raw = use_signal(|| String::new());
-
     rsx! {
         div { class: "contract-fn-card",
             div { class: "contract-fn-header",
