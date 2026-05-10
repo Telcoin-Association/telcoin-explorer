@@ -325,15 +325,24 @@ pub fn ContractPage(address: String) -> Element {
 
     use_effect(move || {
         let address = addr_clone.clone();
-        // Try loading saved ABI
+        // Try loading saved ABI — wait for keccak256 to be available first
         let saved_json = ls_load_abi(&address);
         if !saved_json.is_empty() {
-            let parsed = parse_abi_json(&saved_json);
-            if !parsed.is_empty() {
-                let n = parsed.len();
-                uploaded_abi.set(parsed);
-                abi_msg.set(Some((true, format!("{} functions loaded from saved ABI", n))));
-            }
+            wasm_bindgen_futures::spawn_local(async move {
+                // Poll until keccak256 is available (sha3 CDN script may not be loaded yet)
+                for _ in 0..20 {
+                    let ready = js_sys::eval("typeof keccak256 === 'function'")
+                        .ok().and_then(|v| v.as_bool()).unwrap_or(false);
+                    if ready { break; }
+                    gloo_timers::future::TimeoutFuture::new(100).await;
+                }
+                let parsed = parse_abi_json(&saved_json);
+                if !parsed.is_empty() {
+                    let n = parsed.len();
+                    uploaded_abi.set(parsed);
+                    abi_msg.set(Some((true, format!("{} functions loaded from saved ABI", n))));
+                }
+            });
         }
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
