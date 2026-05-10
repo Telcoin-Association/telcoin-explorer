@@ -380,7 +380,7 @@ inputs.forEach(function(p,i){
 
 var btnClass=isWrite?'contract-fn-btn contract-fn-btn-write':'contract-fn-btn contract-fn-btn-read';
 var btnLabel=isWrite?'Send Transaction':'Query';
-var prefillBtn=isWrite&&inputs.length>0?'<button class="contract-fn-btn contract-fn-btn-read" style="padding:3px 10px;font-size:11px;margin-left:auto;" id="'+cid+'-prefill">Pre-fill current values</button>':'';
+var prefillBtn=isWrite&&inputs.length>0?'<button class="contract-fn-btn contract-fn-btn-read" id="'+cid+'-prefill">↺ Pre-fill current values</button>':'';
 
 el.innerHTML=
   '<div class="contract-fn-header">'+
