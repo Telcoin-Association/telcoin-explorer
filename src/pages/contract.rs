@@ -921,23 +921,6 @@ pub fn ContractPage(address: String) -> Element {
                     }
                 }
                 if *active_tab.read() == "bytecode" {
-                    div { class: "bytecode-unverified-banner",
-                        div { class: "bub-icon",
-                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
-                                path { d:"M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" }
-                                path { d:"M12 9v4m0 4h.01" }
-                            }
-                        }
-                        div { class: "bub-text",
-                            strong { "Source code not verified. " }
-                            "Signatures from "
-                            a { href: "https://www.4byte.directory", target: "_blank", class: "hash-cell", "4byte.directory" }
-                            ". Decompile: "
-                            a { href: format!("https://app.dedaub.com/decompile?md5={}", &contract.address), target: "_blank", class: "hash-cell", "Dedaub ↗" }
-                            " / "
-                            a { href: format!("https://ethervm.io/decompile?address={}&network=custom&rpc=https://rpc.telcoin.network", &contract.address), target: "_blank", class: "hash-cell", "EtherVM ↗" }
-                        }
-                    }
                     div { class: "detail-panel", style: "margin-bottom:16px;",
                         div { class: "detail-panel-title", "Contract Interface (4byte.directory)" }
                         if *sigs_loading.read() {
