@@ -150,6 +150,22 @@ fn decode_result(hex: &str, output_desc: &str) -> String {
             }
         }
     }
+    // Try to decode as ABI-encoded string (offset + length + data)
+    if raw.len() >= 128 {
+        if let Ok(len) = u64::from_str_radix(raw.get(64..128).unwrap_or("0").trim_start_matches('0').get(0..).unwrap_or("0"), 16) {
+            let byte_len = (len as usize) * 2;
+            if let Some(data_hex) = raw.get(128..128+byte_len) {
+                let bytes: Vec<u8> = (0..data_hex.len()).step_by(2)
+                    .filter_map(|i| u8::from_str_radix(&data_hex[i..i+2], 16).ok())
+                    .collect();
+                if let Ok(s) = std::str::from_utf8(&bytes) {
+                    if s.chars().all(|c| !c.is_control() || c == '\n') {
+                        return s.to_string();
+                    }
+                }
+            }
+        }
+    }
     if raw.len() > 80 { format!("0x{}…", &raw[..80]) } else { format!("0x{}", raw) }
 }
 
@@ -242,14 +258,12 @@ fn parse_abi_json(json_str: &str) -> Vec<DynFunction> {
         let sel_js = format!("(function(){{var s={};var b=new TextEncoder().encode(s);return crypto.subtle.digest('SHA-256',b).then(function(h){{var a=new Uint8Array(h);return Array.from(a.slice(0,4)).map(function(x){{return x.toString(16).padStart(2,'0')}}).join('');}});}})();", serde_json::to_string(&sig).unwrap_or_default());
         // For now use a simple approach - just use the sig as a display key
         // Real keccak would need wasm crypto, too complex; use sig hash approximation
-        let selector = format!("{:08x}", {
-            let mut h: u32 = 0x811c9dc5u32;
-            for b in sig.bytes() {
-                h ^= b as u32;
-                h = h.wrapping_mul(0x01000193);
-            }
-            h
-        });
+        // Use keccak256 from sha3.min.js loaded in index.html
+        let sel_key = serde_json::to_string(&sig).unwrap_or_default();
+        let keccak_js = ["window.keccak256?window.keccak256(", &sel_key, ").slice(0,8):'00000000'"].concat();
+        let selector = js_sys::eval(&keccak_js)
+            .ok().and_then(|v| v.as_string())
+            .unwrap_or_else(|| "00000000".to_string());
         let _ = sel_js;
         let inputs = if inputs_raw.is_empty() {
             vec![]
