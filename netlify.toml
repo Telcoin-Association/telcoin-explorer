@@ -1,5 +1,5 @@
 [build]
-  command = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && source $HOME/.cargo/env && cargo install dioxus-cli --locked && dx build --release && echo '/* /index.html 200' > target/dx/telcoin-explorer/release/web/public/_redirects"
+  command = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && source $HOME/.cargo/env && cargo install dioxus-cli --locked && dx build --release && printf '/assets/*  /assets/:splat  200\n/*.js  /:splat  200\n/*.wasm  /:splat  200\n/*  /index.html  200\n' > target/dx/telcoin-explorer/release/web/public/_redirects"
   publish = "target/dx/telcoin-explorer/release/web/public"
 
 [build.environment]
