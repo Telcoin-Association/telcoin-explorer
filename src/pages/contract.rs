@@ -848,13 +848,18 @@ fn StaticFnCard(
                                     return;
                                 }
                                 let calldata = ["0x", &data].concat();
-                                let js = if !iw { js_eth_call(&addr, &calldata) } else { js_send_tx(&addr, &calldata) };
-                                let (res, err) = exec_js_promise(&js).await;
-                                if let Some(r) = res {
-                                    let decoded = if !iw { decode_result(&r, &out) } else { format!("Tx: {}", r) };
-                                    fn_results.write().insert(key.clone(), decoded);
+                                if !iw {
+                                    let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
+                                    match rpc_call::<_, String>("eth_call", params).await {
+                                        Ok(hex) => { fn_results.write().insert(key.clone(), decode_result(&hex, &out)); }
+                                        Err(e)  => { fn_errors.write().insert(key.clone(), e); }
+                                    }
+                                } else {
+                                    let js = js_send_tx(&addr, &calldata);
+                                    let (res, err) = exec_js_promise(&js).await;
+                                    if let Some(r) = res { fn_results.write().insert(key.clone(), format!("Tx: {}", r)); }
+                                    if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
                                 }
-                                if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
                                 fn_loading.write().insert(key.clone(), false);
                             });
                         }
@@ -955,13 +960,18 @@ fn DynFnCard(
                                     return;
                                 }
                                 let calldata = ["0x", &data].concat();
-                                let js = if !iw { js_eth_call(&addr, &calldata) } else { js_send_tx(&addr, &calldata) };
-                                let (res, err) = exec_js_promise(&js).await;
-                                if let Some(r) = res {
-                                    let decoded = if !iw { decode_result(&r, &out) } else { format!("Tx: {}", r) };
-                                    fn_results.write().insert(key.clone(), decoded);
+                                if !iw {
+                                    let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
+                                    match rpc_call::<_, String>("eth_call", params).await {
+                                        Ok(hex) => { fn_results.write().insert(key.clone(), decode_result(&hex, &out)); }
+                                        Err(e)  => { fn_errors.write().insert(key.clone(), e); }
+                                    }
+                                } else {
+                                    let js = js_send_tx(&addr, &calldata);
+                                    let (res, err) = exec_js_promise(&js).await;
+                                    if let Some(r) = res { fn_results.write().insert(key.clone(), format!("Tx: {}", r)); }
+                                    if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
                                 }
-                                if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
                                 fn_loading.write().insert(key.clone(), false);
                             });
                         }
@@ -1039,10 +1049,18 @@ fn GenericFnCard(
                             fn_errors.write().remove(&key);
                             fn_results.write().remove(&key);
                             wasm_bindgen_futures::spawn_local(async move {
-                                let js = if !iw { js_eth_call(&addr, &calldata) } else { js_send_tx(&addr, &calldata) };
-                                let (res, err) = exec_js_promise(&js).await;
-                                if let Some(r) = res { fn_results.write().insert(key.clone(), r); }
-                                if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
+                                if !iw {
+                                    let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
+                                    match rpc_call::<_, String>("eth_call", params).await {
+                                        Ok(hex) => { fn_results.write().insert(key.clone(), hex); }
+                                        Err(e)  => { fn_errors.write().insert(key.clone(), e); }
+                                    }
+                                } else {
+                                    let js = js_send_tx(&addr, &calldata);
+                                    let (res, err) = exec_js_promise(&js).await;
+                                    if let Some(r) = res { fn_results.write().insert(key.clone(), format!("Tx: {}", r)); }
+                                    if let Some(e) = err { fn_errors.write().insert(key.clone(), e); }
+                                }
                                 fn_loading.write().insert(key.clone(), false);
                             });
                         }
