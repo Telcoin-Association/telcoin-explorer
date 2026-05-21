@@ -52,10 +52,11 @@ pub struct Transaction {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkStats {
-    pub latest_block:   u64,
-    pub gas_price_gwei: f64,
-    pub chain_id:       u64,
-    pub epoch_number:   Option<u64>,
+    pub latest_block:    u64,
+    pub gas_price_gwei:  f64,
+    pub chain_id:        u64,
+    pub epoch_number:    Option<u64>,
+    pub validator_count: usize,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenTransfer {
@@ -545,10 +546,18 @@ pub async fn get_epoch_info() -> Option<u64> {
     get_epoch_info_full().await.map(|(id, _, _, _)| id)
 }
 pub async fn get_network_stats() -> Result<NetworkStats, String> {
-    let latest_block   = get_block_number().await?;
-    let gas_price_gwei = get_gas_price().await.unwrap_or(0.0);
-    let epoch_number   = get_epoch_info().await;
-    Ok(NetworkStats { latest_block, gas_price_gwei, chain_id: CHAIN_ID, epoch_number })
+    let (latest_block_res, gas_price, epoch_full) = futures::join!(
+        get_block_number(),
+        get_gas_price(),
+        get_epoch_info_full(),
+    );
+    let latest_block   = latest_block_res?;
+    let gas_price_gwei = gas_price.unwrap_or(0.0);
+    let (epoch_number, validator_count) = match epoch_full {
+        Some((id, _, _, ref addrs)) => (Some(id), addrs.len()),
+        None => (None, 0),
+    };
+    Ok(NetworkStats { latest_block, gas_price_gwei, chain_id: CHAIN_ID, epoch_number, validator_count })
 }
 // ── Validators ────────────────────────────────────────────────────────────────
 pub async fn get_validators_from_registry() -> Result<Vec<String>, String> {

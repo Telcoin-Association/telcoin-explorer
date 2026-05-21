@@ -7,7 +7,6 @@ use crate::services::rpc::{
     Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas,
 };
 use crate::components::loading::{Loading, ErrorBox};
-
 #[component]
 pub fn HomePage() -> Element {
     let mut blocks: Signal<Vec<Block>>           = use_signal(|| vec![]);
@@ -17,7 +16,6 @@ pub fn HomePage() -> Element {
     let mut last_updated: Signal<String>         = use_signal(|| "".to_string());
     let mut home_txs: Signal<Vec<Transaction>>   = use_signal(|| vec![]);
     let mut txs_loading                          = use_signal(|| true);
-
     use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
             let (stats_res, blocks_res) = futures::join!(
@@ -53,7 +51,6 @@ pub fn HomePage() -> Element {
             loading.set(false);
         });
     });
-
     use_future(move || async move {
         loop {
             gloo_timers::future::TimeoutFuture::new(30_000).await;
@@ -89,9 +86,6 @@ pub fn HomePage() -> Element {
                 now.get_hours(), now.get_minutes(), now.get_seconds()));
         }
     });
-
-    let total_txs: usize = blocks.read().iter().map(|b| b.transaction_count).sum();
-
     rsx! {
         div {
             // ── Hero with search ──────────────────────────────────────
@@ -127,10 +121,8 @@ pub fn HomePage() -> Element {
                             }
                         }
                     }
-
                 }
             }
-
             // ── Stats + Panels ────────────────────────────────────────
             div { class: "home-content",
                 div { class: "stats-strip-card",
@@ -161,17 +153,16 @@ pub fn HomePage() -> Element {
                         StatRow { label: "LATEST BLOCK",
                             value: format!("#{}", s.latest_block),
                             sub: Some("Telcoin Network".to_string()) }
-                        StatRow { label: "TRANSACTIONS",
-                            value: format!("{}", total_txs),
-                            sub: Some("Latest 10 blocks".to_string()) }
-                        StatRow { label: "CHAIN ID",
-                            value: format!("{}", s.chain_id),
+                        StatRow { label: "CURRENT EPOCH",
+                            value: format!("#{}", s.epoch_number.unwrap_or(0)),
                             sub: Some("Adiri Testnet".to_string()) }
+                        StatRow { label: "VALIDATORS",
+                            value: format!("{}", s.validator_count),
+                            sub: Some("Active committee".to_string()) }
                     } else {
                         div { class: "stats-loading", "Loading network stats…" }
                     }
                 }
-
                 // ── Panels ────────────────────────────────────────────
                 div { class: "dual-col",
                     // ── Latest Blocks ──────────────────────────────────
@@ -242,7 +233,6 @@ pub fn HomePage() -> Element {
                             }
                         }
                     }
-
                     // ── Latest Transactions ────────────────────────────
                     div { class: "panel",
                         div { class: "panel-header",
@@ -349,7 +339,6 @@ pub fn HomePage() -> Element {
         }
     }
 }
-
 #[component]
 fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
     let icon = match label.as_str() {
@@ -360,20 +349,19 @@ fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
                 path { d:"M12 22.08V12" }
             }
         },
-        "TRANSACTIONS" => rsx! {
+        "CURRENT EPOCH" => rsx! {
             svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
-                path { d:"M8 3H5a2 2 0 0 0-2 2v3" }
-                path { d:"M21 8V5a2 2 0 0 0-2-2h-3" }
-                path { d:"M3 16v3a2 2 0 0 0 2 2h3" }
-                path { d:"M16 21h3a2 2 0 0 0 2-2v-3" }
-                path { d:"M7 12h10" }
-                path { d:"m12 7 5 5-5 5" }
+                path { d:"M12 2L2 7l10 5 10-5-10-5z" }
+                path { d:"M2 17l10 5 10-5" }
+                path { d:"M2 12l10 5 10-5" }
             }
         },
-        "CHAIN ID" => rsx! {
+        "VALIDATORS" => rsx! {
             svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
-                path { d:"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" }
-                path { d:"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" }
+                path { d:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }
+                circle { cx:"9", cy:"7", r:"4" }
+                path { d:"M23 21v-2a4 4 0 0 0-3-3.87" }
+                path { d:"M16 3.13a4 4 0 0 1 0 7.75" }
             }
         },
         _ => rsx! {
@@ -397,7 +385,6 @@ fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
         }
     }
 }
-
 fn run_search() {
     use wasm_bindgen::JsCast;
     let window = match web_sys::window() { Some(w) => w, None => return };
