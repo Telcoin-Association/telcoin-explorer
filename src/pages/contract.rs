@@ -1,4 +1,4 @@
-// src/pages/contract.rs
+// src/pages/contract.rs — v0.1.17
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
@@ -42,65 +42,67 @@ struct DynFunction {
 
 // ── ConsensusRegistry ABI ─────────────────────────────────────────────────
 const CONSENSUS_ABI: &[AbiFunction] = &[
-    AbiFunction { name: "getCurrentEpoch",        selector: "03dc7d1f", mutability: "view",        inputs: &[], output_desc: "uint32 epoch" },
-    AbiFunction { name: "getCurrentEpochInfo",    selector: "e6f7e7bc", mutability: "view",        inputs: &[], output_desc: "tuple (committee[], epochIssuance, blockHeight, epochId, epochDuration, stakeVersion)" },
+    AbiFunction { name: "getCurrentEpoch",        selector: "b97dd9e2", mutability: "view",        inputs: &[], output_desc: "uint32 epoch" },
+    AbiFunction { name: "getCurrentEpochInfo",    selector: "babc394f", mutability: "view",        inputs: &[], output_desc: "tuple (committee[], epochIssuance, blockHeight, epochId, epochDuration, stakeVersion)" },
     AbiFunction { name: "getCurrentStakeVersion", selector: "536343d2", mutability: "view",        inputs: &[], output_desc: "uint8 version" },
     AbiFunction { name: "getNextCommitteeSize",   selector: "a06f8dcb", mutability: "view",        inputs: &[], output_desc: "uint16 size" },
-    AbiFunction { name: "owner",                  selector: "be0e67a3", mutability: "view",        inputs: &[], output_desc: "address" },
-    AbiFunction { name: "paused",                 selector: "8165747e", mutability: "view",        inputs: &[], output_desc: "bool" },
-    AbiFunction { name: "totalSupply",            selector: "1f1881f8", mutability: "view",        inputs: &[], output_desc: "uint256" },
-    AbiFunction { name: "undistributedIssuance",  selector: "206d9d6b", mutability: "view",        inputs: &[], output_desc: "uint256" },
-    AbiFunction { name: "issuance",               selector: "a6374aad", mutability: "view",        inputs: &[], output_desc: "address" },
-    AbiFunction { name: "SYSTEM_ADDRESS",         selector: "340303e7", mutability: "view",        inputs: &[], output_desc: "address" },
-    AbiFunction { name: "getValidator",           selector: "2c2675b3", mutability: "view",
+    AbiFunction { name: "owner",                  selector: "8da5cb5b", mutability: "view",        inputs: &[], output_desc: "address" },
+    AbiFunction { name: "paused",                 selector: "5c975abb", mutability: "view",        inputs: &[], output_desc: "bool" },
+    AbiFunction { name: "totalSupply",            selector: "18160ddd", mutability: "view",        inputs: &[], output_desc: "uint256" },
+    AbiFunction { name: "undistributedIssuance",  selector: "008d6acd", mutability: "view",        inputs: &[], output_desc: "uint256" },
+    AbiFunction { name: "issuance",               selector: "863623bb", mutability: "view",        inputs: &[], output_desc: "address" },
+    AbiFunction { name: "SYSTEM_ADDRESS",         selector: "3434735f", mutability: "view",        inputs: &[], output_desc: "address" },
+    AbiFunction { name: "getValidator",           selector: "1904bb2e", mutability: "view",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }],
         output_desc: "tuple (validatorAddress, activationEpoch, exitEpoch, currentStatus, isRetired, stakeVersion, region)" },
-    AbiFunction { name: "getValidators",          selector: "5d0c5507", mutability: "view",
+    AbiFunction { name: "getValidators",          selector: "8cc05eda", mutability: "view",
         inputs: &[AbiParam { name: "status (0=Staked,1=PendingActivation,2=Active,3=PendingExit,4=Exited,5=Retired)", ty: "uint8" }],
         output_desc: "tuple[] validators" },
-    AbiFunction { name: "getCommitteeValidators", selector: "5817923f", mutability: "view",
+    AbiFunction { name: "getCommitteeValidators", selector: "a0201be5", mutability: "view",
         inputs: &[AbiParam { name: "epoch", ty: "uint32" }], output_desc: "tuple[] validators" },
-    AbiFunction { name: "getEpochInfo",           selector: "32c8af6c", mutability: "view",
+    AbiFunction { name: "getCommitteeBlsPubkeys", selector: "6ae9942c", mutability: "view",
+        inputs: &[AbiParam { name: "epoch", ty: "uint32" }], output_desc: "bytes[] blsPubkeys" },
+    AbiFunction { name: "getEpochInfo",           selector: "374ed18c", mutability: "view",
         inputs: &[AbiParam { name: "epoch", ty: "uint32" }],
         output_desc: "tuple (committee[], epochIssuance, blockHeight, epochId, epochDuration, stakeVersion)" },
-    AbiFunction { name: "getRewards",             selector: "8fd2ef03", mutability: "view",
+    AbiFunction { name: "getRewards",             selector: "79ee54f7", mutability: "view",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "uint256 rewards (wei)" },
-    AbiFunction { name: "getBalanceBreakdown",    selector: "700fd567", mutability: "view",
+    AbiFunction { name: "getBalanceBreakdown",    selector: "15b5709a", mutability: "view",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }],
         output_desc: "uint256 staked, uint256 rewards, uint256 delegated" },
-    AbiFunction { name: "isDelegated",            selector: "d546c737", mutability: "view",
+    AbiFunction { name: "isDelegated",            selector: "3e28391d", mutability: "view",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "bool" },
-    AbiFunction { name: "isRetired",              selector: "da8c5b79", mutability: "view",
+    AbiFunction { name: "isRetired",              selector: "6d3c6275", mutability: "view",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "bool" },
-    AbiFunction { name: "isValidator",            selector: "8f7f86f7", mutability: "view",
+    AbiFunction { name: "isValidator",            selector: "6a926591", mutability: "view",
         inputs: &[AbiParam { name: "blsPubkey (hex)", ty: "bytes" }], output_desc: "bool" },
-    AbiFunction { name: "balanceOf",              selector: "1d7976f3", mutability: "view",
+    AbiFunction { name: "balanceOf",              selector: "70a08231", mutability: "view",
         inputs: &[AbiParam { name: "owner", ty: "address" }], output_desc: "uint256" },
-    AbiFunction { name: "getBlsPubkey",           selector: "eb20256c", mutability: "view",
+    AbiFunction { name: "getBlsPubkey",           selector: "059b916c", mutability: "view",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "bytes blsPubkey" },
-    AbiFunction { name: "validators",             selector: "709b80e1", mutability: "view",
+    AbiFunction { name: "validators",             selector: "fa52c7d8", mutability: "view",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }],
         output_desc: "address, uint32 activationEpoch, uint32 exitEpoch, uint8 status, bool isRetired, uint8 stakeVersion, uint8 region" },
-    AbiFunction { name: "activate",              selector: "1e5ddb13", mutability: "nonpayable", inputs: &[], output_desc: "" },
-    AbiFunction { name: "beginExit",             selector: "26153ba9", mutability: "nonpayable", inputs: &[], output_desc: "" },
-    AbiFunction { name: "pause",                 selector: "0e0ece9c", mutability: "nonpayable", inputs: &[], output_desc: "" },
-    AbiFunction { name: "unpause",               selector: "b4708547", mutability: "nonpayable", inputs: &[], output_desc: "" },
-    AbiFunction { name: "renounceOwnership",     selector: "5e0827e9", mutability: "nonpayable", inputs: &[], output_desc: "" },
-    AbiFunction { name: "unstake",               selector: "a1e271cb", mutability: "nonpayable",
+    AbiFunction { name: "activate",              selector: "0f15f4c0", mutability: "nonpayable", inputs: &[], output_desc: "" },
+    AbiFunction { name: "beginExit",             selector: "2228dfa0", mutability: "nonpayable", inputs: &[], output_desc: "" },
+    AbiFunction { name: "pause",                 selector: "8456cb59", mutability: "nonpayable", inputs: &[], output_desc: "" },
+    AbiFunction { name: "unpause",               selector: "3f4ba83a", mutability: "nonpayable", inputs: &[], output_desc: "" },
+    AbiFunction { name: "renounceOwnership",     selector: "715018a6", mutability: "nonpayable", inputs: &[], output_desc: "" },
+    AbiFunction { name: "unstake",               selector: "f2888dbb", mutability: "nonpayable",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "" },
-    AbiFunction { name: "claimStakeRewards",     selector: "494b7be7", mutability: "nonpayable",
+    AbiFunction { name: "claimStakeRewards",     selector: "2b9f4985", mutability: "nonpayable",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "" },
-    AbiFunction { name: "mint",                  selector: "6765b390", mutability: "nonpayable",
+    AbiFunction { name: "mint",                  selector: "6a627842", mutability: "nonpayable",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "" },
-    AbiFunction { name: "burn",                  selector: "05218768", mutability: "nonpayable",
+    AbiFunction { name: "burn",                  selector: "89afcb44", mutability: "nonpayable",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }], output_desc: "" },
-    AbiFunction { name: "setNextCommitteeSize",  selector: "1fa3697a", mutability: "nonpayable",
+    AbiFunction { name: "setNextCommitteeSize",  selector: "62fcde4b", mutability: "nonpayable",
         inputs: &[AbiParam { name: "newSize", ty: "uint16" }], output_desc: "" },
-    AbiFunction { name: "setValidatorRegion",    selector: "06ec433c", mutability: "nonpayable",
+    AbiFunction { name: "setValidatorRegion",    selector: "f0624768", mutability: "nonpayable",
         inputs: &[AbiParam { name: "validatorAddress", ty: "address" }, AbiParam { name: "region (0-255)", ty: "uint8" }], output_desc: "" },
-    AbiFunction { name: "transferOwnership",     selector: "aae7857b", mutability: "nonpayable",
+    AbiFunction { name: "transferOwnership",     selector: "f2fde38b", mutability: "nonpayable",
         inputs: &[AbiParam { name: "newOwner", ty: "address" }], output_desc: "" },
-    AbiFunction { name: "allocateIssuance",      selector: "785b8291", mutability: "payable", inputs: &[], output_desc: "" },
+    AbiFunction { name: "allocateIssuance",      selector: "355811a7", mutability: "payable", inputs: &[], output_desc: "" },
 ];
 
 // ── ABI encoding ──────────────────────────────────────────────────────────
@@ -921,6 +923,23 @@ pub fn ContractPage(address: String) -> Element {
                     }
                 }
                 if *active_tab.read() == "bytecode" {
+                    div { class: "bytecode-unverified-banner",
+                        div { class: "bub-icon",
+                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
+                                path { d:"M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" }
+                                path { d:"M12 9v4m0 4h.01" }
+                            }
+                        }
+                        div { class: "bub-text",
+                            strong { "Source code not verified. " }
+                            "Signatures from "
+                            a { href: "https://www.4byte.directory", target: "_blank", class: "hash-cell", "4byte.directory" }
+                            ". Decompile: "
+                            a { href: format!("https://app.dedaub.com/decompile?md5={}", &contract.address), target: "_blank", class: "hash-cell", "Dedaub ↗" }
+                            " / "
+                            a { href: format!("https://ethervm.io/decompile?address={}&network=custom&rpc=https://rpc.telcoin.network", &contract.address), target: "_blank", class: "hash-cell", "EtherVM ↗" }
+                        }
+                    }
                     div { class: "detail-panel", style: "margin-bottom:16px;",
                         div { class: "detail-panel-title", "Contract Interface (4byte.directory)" }
                         if *sigs_loading.read() {

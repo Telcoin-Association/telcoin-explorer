@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     get_current_epoch_data, get_validator_leader_counts,
     get_block_number, EpochData,
-    shorten_addr, CONSENSUS_REGISTRY, EPOCH_DURATION_HOURS,
+    shorten_addr, CONSENSUS_REGISTRY,
 };
 use crate::components::loading::{Loading, ErrorBox};
 
@@ -92,6 +92,7 @@ pub fn EpochsPage() -> Element {
 
     let epoch_num = epoch_data.read().as_ref().map(|d| d.epoch).unwrap_or(0);
     let val_count = epoch_data.read().as_ref().map(|d| d.validator_count).unwrap_or(0);
+    let epoch_dur_h = epoch_data.read().as_ref().map(|d| d.epoch_duration / 3600).unwrap_or(6);
 
     rsx! {
         div { class: "page",
@@ -126,7 +127,7 @@ pub fn EpochsPage() -> Element {
                     div {
                         strong { "What is an Epoch? " }
                         "An epoch is a fixed "
-                        strong { "{EPOCH_DURATION_HOURS}-hour period" }
+                        strong { "{epoch_dur_h}-hour period" }
                         " during which a specific validator committee runs DAG consensus. "
                         "At the end of each epoch, "
                         code { "concludeEpoch()" }
@@ -176,7 +177,7 @@ pub fn EpochsPage() -> Element {
                             }
                         }
                         div { class: "epoch-stat-label", "Epoch Duration" }
-                        div { class: "epoch-stat-value", "{EPOCH_DURATION_HOURS}h" }
+                        div { class: "epoch-stat-value", "{epoch_dur_h}h" }
                         div { class: "epoch-stat-sub", "Fixed period per committee" }
                     }
                     div { class: "epoch-stat-card accent-cyan",
