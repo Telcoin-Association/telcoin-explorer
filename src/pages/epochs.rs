@@ -17,12 +17,13 @@ struct LeaderRow {
     pct:     String,
     bar_pct: String,
 }
-
 struct CommitteeRow {
     rank:  usize,
     addr:  String,
     led:   u64,
 }
+
+/// Build JS for the live epoch countdown + progress bar.
 
 #[component]
 pub fn EpochsPage() -> Element {
@@ -38,13 +39,14 @@ pub fn EpochsPage() -> Element {
         let mut error         = error.clone();
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
-            match get_current_epoch_data().await {
-                Ok(data) => epoch_data.set(Some(data)),
-                Err(e)   => { error.set(Some(e)); loading.set(false); return; }
-            }
+            let data = match get_current_epoch_data().await {
+                Ok(d)  => d,
+                Err(e) => { error.set(Some(e)); loading.set(false); return; }
+            };
+            epoch_data.set(Some(data));
+            loading.set(false);
             let counts = get_validator_leader_counts(200).await;
             leader_counts.set(counts);
-            loading.set(false);
         });
     });
 
@@ -90,13 +92,14 @@ pub fn EpochsPage() -> Element {
         format!("{} / {}", quorum, d.validator_count)
     }).unwrap_or_default();
 
-    let epoch_num = epoch_data.read().as_ref().map(|d| d.epoch).unwrap_or(0);
-    let val_count = epoch_data.read().as_ref().map(|d| d.validator_count).unwrap_or(0);
+    let epoch_num   = epoch_data.read().as_ref().map(|d| d.epoch).unwrap_or(0);
+    let val_count   = epoch_data.read().as_ref().map(|d| d.validator_count).unwrap_or(0);
     let epoch_dur_h = epoch_data.read().as_ref().map(|d| d.epoch_duration / 3600).unwrap_or(6);
+
+
 
     rsx! {
         div { class: "page",
-
             div { class: "page-title-row",
                 div {
                     h1 { class: "page-title", "Epochs" }
@@ -114,13 +117,11 @@ pub fn EpochsPage() -> Element {
                     "TNIP-2 Spec ↗"
                 }
             }
-
             if *loading.read() {
                 Loading { msg: Some("Reading ConsensusRegistry…".to_string()) }
             } else if let Some(err) = error.read().as_ref() {
                 ErrorBox { msg: err.clone() }
             } else {
-
                 // ── What is an epoch ─────────────────────────────────
                 div { class: "info-note", style: "margin-bottom:20px;",
                     span { class: "info-note-icon", "ℹ" }
@@ -135,7 +136,6 @@ pub fn EpochsPage() -> Element {
                         "Fresh consensus components are created each epoch while the execution engine and networks persist."
                     }
                 }
-
                 // ── Stat cards ───────────────────────────────────────
                 div { class: "epoch-stat-grid",
                     div { class: "epoch-stat-card accent-blue",
@@ -194,8 +194,7 @@ pub fn EpochsPage() -> Element {
                         div { class: "epoch-stat-sub", "2f+1 required for finality" }
                     }
                 }
-
-                // ── Epoch lifecycle ──────────────────────────────────
+                                // ── Epoch lifecycle ──────────────────────────────────
                 div { class: "panel", style: "margin-bottom:20px;",
                     div { class: "panel-header",
                         span { class: "panel-title", "Epoch Lifecycle" }
@@ -242,7 +241,6 @@ pub fn EpochsPage() -> Element {
                         }
                     }
                 }
-
                 // ── Leader distribution ──────────────────────────────
                 div { class: "panel", style: "margin-bottom:20px;",
                     div { class: "panel-header",
@@ -278,7 +276,6 @@ pub fn EpochsPage() -> Element {
                         }
                     }
                 }
-
                 // ── Current committee ────────────────────────────────
                 div { class: "panel",
                     div { class: "panel-header",
