@@ -27,16 +27,12 @@ struct CommitteeRow {
 
 #[component]
 pub fn EpochsPage() -> Element {
-    let epoch_data: Signal<Option<EpochData>>     = use_signal(|| None);
-    let leader_counts: Signal<Vec<(String, u64)>> = use_signal(|| vec![]);
-    let loading  = use_signal(|| true);
-    let error: Signal<Option<String>>             = use_signal(|| None);
+    let mut epoch_data: Signal<Option<EpochData>>     = use_signal(|| None);
+    let mut leader_counts: Signal<Vec<(String, u64)>> = use_signal(|| vec![]);
+    let mut loading  = use_signal(|| true);
+    let mut error: Signal<Option<String>>             = use_signal(|| None);
 
     use_effect(move || {
-        let mut epoch_data    = epoch_data.clone();
-        let mut leader_counts = leader_counts.clone();
-        let mut loading       = loading.clone();
-        let mut error         = error.clone();
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
             let data = match get_current_epoch_data().await {
