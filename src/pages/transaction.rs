@@ -103,7 +103,7 @@ pub fn TransactionPage(hash: String) -> Element {
                             div { class: "detail-row",
                                 div { class: "detail-key", "Value" }
                                 div { class: "detail-val",
-                                    span { class: "tx-value-big", "{format_tel(t.value_tel)} TEL" }
+                                    span { class: "tx-value-big", { format!("{:.4} TEL", t.value_tel) } }
                                 }
                             }
                             div { class: "detail-row",
