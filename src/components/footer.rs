@@ -1,6 +1,5 @@
 // src/components/footer.rs
 use dioxus::prelude::*;
-
 #[component]
 pub fn Footer() -> Element {
     rsx! {
@@ -12,6 +11,23 @@ pub fn Footer() -> Element {
                     span { class: "footer-sub", "Adiri Testnet Explorer" }
                 }
                 div { class: "footer-links",
+                    a {
+                        href: "https://status.telscan.xyz/",
+                        target: "_blank",
+                        class: "footer-link",
+                        svg {
+                            width: "14", height: "14",
+                            view_box: "0 0 24 24",
+                            fill: "none",
+                            stroke: "currentColor",
+                            stroke_width: "2",
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            style: "display:inline;vertical-align:middle;margin-right:4px;",
+                            path { d: "M22 12h-4l-3 9L9 3l-3 9H2" }
+                        }
+                        "Status"
+                    }
                     a {
                         href: "https://www.telcoin.network",
                         target: "_blank",
@@ -33,7 +49,7 @@ pub fn Footer() -> Element {
                     }
                 }
                 div { class: "footer-right",
-                    span { class: "footer-version", "v0.1.14" }
+                    span { class: "footer-version", "v0.2.0" }
                     span { class: "footer-copy", "2026 · © Telcoin Association" }
                 }
             }

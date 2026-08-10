@@ -2,9 +2,9 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_token_info, get_token_transfers, parse_transfer_logs,
-    get_block_number, TokenInfo, TokenTransfer,
-    shorten_hash, shorten_addr, unix_to_age,
+    get_token_info, get_token_transfers_page,
+    TokenInfo, TokenTransfer,
+    shorten_hash, shorten_addr,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
@@ -12,31 +12,25 @@ use crate::components::loading::{Loading, ErrorBox, CopyButton};
 pub fn TokenPage(address: String) -> Element {
     let mut token: Signal<Option<TokenInfo>>      = use_signal(|| None);
     let mut transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
+    let mut transfers_total: Signal<u64>          = use_signal(|| 0);
     let mut loading  = use_signal(|| true);
-    let mut error: Signal<Option<String>>         = use_signal(|| None);
+    let error: Signal<Option<String>>             = use_signal(|| None);
     let mut not_token = use_signal(|| false);
+    let mut transfers_page: Signal<u64> = use_signal(|| 0);
+    let mut more_loading = use_signal(|| false);
 
     let addr_clone = address.clone();
-
     use_effect(move || {
-        let address      = addr_clone.clone();
-        let mut token    = token.clone();
-        let mut transfers = transfers.clone();
-        let mut loading  = loading.clone();
-        let mut error    = error.clone();
-        let mut not_token = not_token.clone();
-
+        let address = addr_clone.clone();
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
             match get_token_info(&address).await {
                 Some(info) => {
                     token.set(Some(info));
-                    // Fetch recent transfers
-                    if let Ok(latest) = get_block_number().await {
-                        let from = latest.saturating_sub(10_000);
-                        if let Ok(logs) = get_token_transfers(&address, from, latest).await {
-                            transfers.set(parse_transfer_logs(logs));
-                        }
+                    // Full transfer history — indexed by token contract, no block-range limit.
+                    if let Ok((xfers, total)) = get_token_transfers_page(&address, 0, 25).await {
+                        transfers.set(xfers);
+                        transfers_total.set(total);
                     }
                 }
                 None => { not_token.set(true); }
@@ -45,9 +39,24 @@ pub fn TokenPage(address: String) -> Element {
         });
     });
 
+    let load_more = {
+        let address = address.clone();
+        move |_| {
+            let address = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                more_loading.set(true);
+                let next = *transfers_page.read() + 1;
+                if let Ok((mut more, _)) = get_token_transfers_page(&address, next, 25).await {
+                    transfers.write().append(&mut more);
+                    transfers_page.set(next);
+                }
+                more_loading.set(false);
+            });
+        }
+    };
+
     rsx! {
         div { class: "page",
-
             if *loading.read() {
                 Loading { msg: Some("Loading token info…".to_string()) }
             } else if *not_token.read() {
@@ -63,7 +72,6 @@ pub fn TokenPage(address: String) -> Element {
             } else if let Some(err) = error.read().as_ref() {
                 ErrorBox { msg: err.clone() }
             } else if let Some(t) = token.read().as_ref() {
-
                 // Header
                 div { class: "token-page-header",
                     div { class: "token-icon-wrap",
@@ -76,7 +84,6 @@ pub fn TokenPage(address: String) -> Element {
                         span { class: "token-symbol-badge", "{t.symbol}" }
                     }
                 }
-
                 // Overview
                 div { class: "detail-panel",
                     div { class: "detail-panel-title", "Token Overview" }
@@ -118,14 +125,13 @@ pub fn TokenPage(address: String) -> Element {
                         }
                     }
                 }
-
                 // Recent Transfers
                 div { class: "detail-panel",
                     div { class: "detail-panel-title",
-                        { format!("Recent Transfers (last 10,000 blocks)") }
+                        { format!("Recent Transfers ({} total)", transfers_total.read()) }
                     }
                     if transfers.read().is_empty() {
-                        div { class: "empty-state", "No transfers found in the last 10,000 blocks." }
+                        div { class: "empty-state", "No transfers found for this token." }
                     } else {
                         div { class: "block-tx-table",
                             div { class: "btx-header",
@@ -164,6 +170,16 @@ pub fn TokenPage(address: String) -> Element {
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                        if transfers.read().len() < *transfers_total.read() as usize {
+                            div { style: "padding:16px; text-align:center;",
+                                button {
+                                    class: "contract-fn-btn contract-fn-btn-read",
+                                    disabled: *more_loading.read(),
+                                    onclick: load_more,
+                                    if *more_loading.read() { "Loading…" } else { "Load More" }
                                 }
                             }
                         }

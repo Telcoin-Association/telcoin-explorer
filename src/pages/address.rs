@@ -3,98 +3,52 @@ use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     is_contract,
-    get_balance, get_tx_count, get_block_number, get_block_by_number, get_transaction,
-    get_token_transfers, parse_transfer_logs, get_token_symbol,
+    get_balance, get_tx_count, get_address_txs, get_address_transfers,
     TokenTransfer, Transaction, shorten_hash, shorten_addr,
     CONSENSUS_REGISTRY,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
-const SCAN_BLOCKS: u64 = 200;
-
 #[component]
 pub fn AddressPage(address: String) -> Element {
-    let mut balance: Signal<Option<f64>>         = use_signal(|| None);
-    let mut tx_count: Signal<Option<u64>>        = use_signal(|| None);
+    let mut balance: Signal<Option<f64>>          = use_signal(|| None);
+    let mut tx_count: Signal<Option<u64>>         = use_signal(|| None);
     let mut transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
+    let mut transfers_total: Signal<u64>          = use_signal(|| 0);
     let mut native_txs: Signal<Vec<Transaction>>  = use_signal(|| vec![]);
-    let mut loading                              = use_signal(|| true);
-    let mut txs_loading                          = use_signal(|| true);
-    let mut error: Signal<Option<String>>        = use_signal(|| None);
-    let mut active_tab                       = use_signal(|| "txs");
-    let mut contract_flag: Signal<bool>      = use_signal(|| false);
-    let addr_clone = address.clone();
+    let mut txs_total: Signal<u64>                = use_signal(|| 0);
+    let mut txs_page: Signal<u64>                 = use_signal(|| 0);
+    let mut txs_more_loading                      = use_signal(|| false);
+    let mut loading                               = use_signal(|| true);
+    let mut txs_loading                           = use_signal(|| true);
+    let mut error: Signal<Option<String>>         = use_signal(|| None);
+    let mut active_tab                            = use_signal(|| "txs");
+    let mut contract_flag: Signal<bool>           = use_signal(|| false);
+    let mut transfers_page: Signal<u64>           = use_signal(|| 0);
+    let mut transfers_more_loading                = use_signal(|| false);
 
+    let addr_clone = address.clone();
     use_effect(move || {
         let address = addr_clone.clone();
-
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
-
-            let (bal_res, count_res, latest_res) = futures::join!(
+            let (bal_res, count_res) = futures::join!(
                 get_balance(&address),
                 get_tx_count(&address),
-                get_block_number(),
             );
             match bal_res   { Ok(b) => balance.set(Some(b)), Err(e) => error.set(Some(e)) }
             match count_res { Ok(n) => tx_count.set(Some(n)), Err(_) => {} }
-
             loading.set(false);
 
-            if let Ok(latest) = latest_res {
-                let addr_lower = address.to_lowercase();
-
-                // Scan blocks for native TEL transactions (parallel, 20 at a time)
-                let from_block = latest.saturating_sub(SCAN_BLOCKS);
-                let block_nums: Vec<u64> = (from_block..=latest).rev().collect();
-                let mut found_txs: Vec<Transaction> = Vec::new();
-
-                for chunk in block_nums.chunks(20) {
-                    let block_futs: Vec<_> = chunk.iter().map(|&n| get_block_by_number(n)).collect();
-                    let blocks = futures::future::join_all(block_futs).await;
-                    for block_res in blocks {
-                        if let Ok(block) = block_res {
-                            if !block.transactions.is_empty() {
-                                let tx_futs: Vec<_> = block.transactions.iter()
-                                    .map(|h| get_transaction(h))
-                                    .collect();
-                                let txs = futures::future::join_all(tx_futs).await;
-                                for tx_res in txs {
-                                    if let Ok(tx) = tx_res {
-                                        let from_match = tx.from.to_lowercase() == addr_lower;
-                                        let to_match = tx.to.as_ref()
-                                            .map(|t| t.to_lowercase() == addr_lower)
-                                            .unwrap_or(false);
-                                        if from_match || to_match {
-                                            found_txs.push(tx);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                found_txs.sort_by(|a, b| b.block_number.cmp(&a.block_number));
-                native_txs.set(found_txs);
-
-                // ERC-20 transfers
-                let from_logs = latest.saturating_sub(5000);
-                if let Ok(logs) = get_token_transfers(&address, from_logs, latest).await {
-                    let mut parsed = parse_transfer_logs(logs);
-                    let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-                    for t in parsed.iter_mut() {
-                        let sym = if let Some(s) = seen.get(&t.token_address) {
-                            s.clone()
-                        } else {
-                            let s = get_token_symbol(&t.token_address).await;
-                            seen.insert(t.token_address.clone(), s.clone());
-                            s
-                        };
-                        t.token_symbol = sym;
-                    }
-                    transfers.set(parsed);
-                }
+            // Full transaction history — indexed pointer lookup, no block scanning.
+            if let Ok((txs, total)) = get_address_txs(&address, 0, 25).await {
+                native_txs.set(txs);
+                txs_total.set(total);
+            }
+            // Full ERC-20 transfer history — token_symbol already cached by the indexer.
+            if let Ok((xfers, total)) = get_address_transfers(&address, 0, 25).await {
+                transfers.set(xfers);
+                transfers_total.set(total);
             }
 
             contract_flag.set(is_contract(&address).await);
@@ -102,21 +56,49 @@ pub fn AddressPage(address: String) -> Element {
         });
     });
 
+    let load_more_txs = {
+        let address = address.clone();
+        move |_| {
+            let address = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                txs_more_loading.set(true);
+                let next = *txs_page.read() + 1;
+                if let Ok((mut more, _)) = get_address_txs(&address, next, 25).await {
+                    native_txs.write().append(&mut more);
+                    txs_page.set(next);
+                }
+                txs_more_loading.set(false);
+            });
+        }
+    };
+    let load_more_transfers = {
+        let address = address.clone();
+        move |_| {
+            let address = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                transfers_more_loading.set(true);
+                let next = *transfers_page.read() + 1;
+                if let Ok((mut more, _)) = get_address_transfers(&address, next, 25).await {
+                    transfers.write().append(&mut more);
+                    transfers_page.set(next);
+                }
+                transfers_more_loading.set(false);
+            });
+        }
+    };
+
     let avatar_char = address.chars().nth(2).unwrap_or('?').to_uppercase().next().unwrap_or('?');
     let is_registry = address.to_lowercase() == CONSENSUS_REGISTRY.to_lowercase();
 
     rsx! {
         div { class: "page",
-
             if *loading.read() {
                 Loading { msg: Some("Fetching address data…".to_string()) }
             } else {
-
                 // ── Address header ──────────────────────────────────────
                 div { class: "address-header",
                     div { class: "address-avatar", "{avatar_char}" }
                     div { class: "address-info",
-
                         div { class: "address-type-row",
                             if is_registry {
                                 span { class: "addr-type-badge contract", "ConsensusRegistry" }
@@ -136,19 +118,16 @@ pub fn AddressPage(address: String) -> Element {
                                 }
                             }
                         }
-
                         div { class: "address-hash-row",
                             span { class: "address-hash-text", "{address}" }
                             CopyButton { text: address.clone() }
                         }
-
                         if let Some(bal) = *balance.read() {
                             div { class: "address-balance-big",
                                 { format!("{:.6}", bal) }
                                 span { "TEL" }
                             }
                         }
-
                         if let Some(nonce) = *tx_count.read() {
                             div { class: "address-meta",
                                 "Transactions sent: "
@@ -157,42 +136,39 @@ pub fn AddressPage(address: String) -> Element {
                         }
                     }
                 }
-
                 if let Some(err) = error.read().as_ref() {
                     ErrorBox { msg: err.clone() }
                 }
-
                 // ── Tabs ────────────────────────────────────────────────
                 div { class: "tabs-row",
                     button {
                         class: if *active_tab.read() == "txs" { "tab-btn tab-active" } else { "tab-btn" },
                         onclick: move |_| active_tab.set("txs"),
                         "Transactions"
-                        span { class: "tab-count", " ({native_txs.read().len()})" }
+                        span { class: "tab-count", " ({txs_total.read()})" }
                     }
                     button {
                         class: if *active_tab.read() == "transfers" { "tab-btn tab-active" } else { "tab-btn" },
                         onclick: move |_| active_tab.set("transfers"),
                         "Token Transfers"
-                        span { class: "tab-count", " ({transfers.read().len()})" }
+                        span { class: "tab-count", " ({transfers_total.read()})" }
                     }
                 }
-
                 // ── Transactions tab ────────────────────────────────────
                 if *active_tab.read() == "txs" {
                     div { class: "panel",
                         div { class: "panel-header",
                             span { class: "panel-title", "Transactions" }
                             span { style: "color:var(--text-muted); font-size:11px;",
-                                { format!("Last {} blocks", SCAN_BLOCKS) }
+                                { format!("{} total", txs_total.read()) }
                             }
                         }
                         if *txs_loading.read() {
-                            Loading { msg: Some(format!("Scanning last {} blocks…", SCAN_BLOCKS)) }
+                            Loading { msg: Some("Loading transaction history…".to_string()) }
                         } else if native_txs.read().is_empty() {
                             div { class: "empty-state",
                                 div { style: "font-size:32px; margin-bottom:12px;", "📭" }
-                                { format!("No transactions found in the last {} blocks", SCAN_BLOCKS) }
+                                "No transactions found for this address"
                             }
                         } else {
                             div { class: "table-wrapper",
@@ -277,15 +253,26 @@ pub fn AddressPage(address: String) -> Element {
                                 }
                             }
                         }
+                        if native_txs.read().len() < *txs_total.read() as usize {
+                            div { style: "padding:16px; text-align:center;",
+                                button {
+                                    class: "contract-fn-btn contract-fn-btn-read",
+                                    disabled: *txs_more_loading.read(),
+                                    onclick: load_more_txs,
+                                    if *txs_more_loading.read() { "Loading…" } else { "Load More" }
+                                }
+                            }
+                        }
                     }
                 }
-
                 // ── Token Transfers tab ────────────────────────────────
                 if *active_tab.read() == "transfers" {
                     div { class: "panel",
                         div { class: "panel-header",
                             span { class: "panel-title", "ERC-20 Token Transfers" }
-                            span { style: "color:var(--text-muted); font-size:11px;", "Last 5,000 blocks" }
+                            span { style: "color:var(--text-muted); font-size:11px;",
+                                { format!("{} total", transfers_total.read()) }
+                            }
                         }
                         div { class: "table-wrapper",
                             if transfers.read().is_empty() {
@@ -347,6 +334,16 @@ pub fn AddressPage(address: String) -> Element {
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                        if transfers.read().len() < *transfers_total.read() as usize {
+                            div { style: "padding:16px; text-align:center;",
+                                button {
+                                    class: "contract-fn-btn contract-fn-btn-read",
+                                    disabled: *transfers_more_loading.read(),
+                                    onclick: load_more_transfers,
+                                    if *transfers_more_loading.read() { "Loading…" } else { "Load More" }
                                 }
                             }
                         }

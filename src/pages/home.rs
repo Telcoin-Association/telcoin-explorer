@@ -7,6 +7,7 @@ use crate::services::rpc::{
     Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas,
 };
 use crate::components::loading::{Loading, ErrorBox};
+
 #[component]
 pub fn HomePage() -> Element {
     let mut blocks: Signal<Vec<Block>>           = use_signal(|| vec![]);
@@ -16,6 +17,7 @@ pub fn HomePage() -> Element {
     let mut last_updated: Signal<String>         = use_signal(|| "".to_string());
     let mut home_txs: Signal<Vec<Transaction>>   = use_signal(|| vec![]);
     let mut txs_loading                          = use_signal(|| true);
+
     use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
             let (stats_res, blocks_res) = futures::join!(
@@ -37,6 +39,8 @@ pub fn HomePage() -> Element {
             }
             home_txs.set(full_txs);
             txs_loading.set(false);
+            // Initial load: show an error banner if either fetch fails — there's
+            // no prior data to fall back to.
             match stats_res {
                 Ok(s)  => stats.set(Some(s)),
                 Err(e) => error.set(Some(e)),
@@ -51,6 +55,7 @@ pub fn HomePage() -> Element {
             loading.set(false);
         });
     });
+
     use_future(move || async move {
         loop {
             gloo_timers::future::TimeoutFuture::new(30_000).await;
@@ -71,21 +76,31 @@ pub fn HomePage() -> Element {
                     if full_txs.len() >= 10 { break; }
                 }
             }
-            home_txs.set(full_txs);
+            // Background refresh: a transient fetch failure should never blank
+            // out an already-rendered page. Only replace home_txs if we got a
+            // non-empty result OR the previous list happens to be empty too;
+            // otherwise keep showing the last-known-good transactions.
+            if !full_txs.is_empty() || home_txs.read().is_empty() {
+                home_txs.set(full_txs);
+            }
             txs_loading.set(false);
+            // Background refresh: on success, update data and clear any stale
+            // error banner. On failure, log and silently keep the last-known-good
+            // data on screen rather than surfacing a persistent error banner.
             match stats_res {
-                Ok(s)  => stats.set(Some(s)),
-                Err(e) => error.set(Some(e)),
+                Ok(s)  => { stats.set(Some(s)); error.set(None); }
+                Err(e) => { web_sys::console::warn_1(&format!("stats refresh failed: {e}").into()); }
             }
             match blocks_res {
-                Ok(b)  => blocks.set(b),
-                Err(e) => error.set(Some(e)),
+                Ok(b)  => { blocks.set(b); error.set(None); }
+                Err(e) => { web_sys::console::warn_1(&format!("blocks refresh failed: {e}").into()); }
             }
             let now = js_sys::Date::new_0();
             last_updated.set(format!("{:02}:{:02}:{:02}",
                 now.get_hours(), now.get_minutes(), now.get_seconds()));
         }
     });
+
     rsx! {
         div {
             // ── Hero with search ──────────────────────────────────────

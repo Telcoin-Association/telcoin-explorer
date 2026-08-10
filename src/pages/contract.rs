@@ -1,12 +1,11 @@
-// src/pages/contract.rs — v0.1.17
+// src/pages/contract.rs — v0.2.0
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     resolve_selectors, FunctionSignature,
-    get_contract_info, get_block_number, get_token_transfers,
-    parse_transfer_logs, get_token_symbol, ContractInfo,
+    get_contract_info, get_address_transfers, contract_call, ContractInfo,
     TokenTransfer, shorten_hash, shorten_addr, unix_to_age,
-    CONSENSUS_REGISTRY, rpc_call,
+    CONSENSUS_REGISTRY, INDEXER_URL,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
@@ -24,7 +23,6 @@ struct AbiFunction {
     inputs:      &'static [AbiParam],
     output_desc: &'static str,
 }
-
 // ── Dynamic ABI types (uploaded JSON) ────────────────────────────────────
 #[derive(Clone, Debug, PartialEq)]
 struct DynParam {
@@ -39,7 +37,6 @@ struct DynFunction {
     inputs:      Vec<DynParam>,
     output_desc: String,
 }
-
 // ── ConsensusRegistry ABI ─────────────────────────────────────────────────
 const CONSENSUS_ABI: &[AbiFunction] = &[
     AbiFunction { name: "getCurrentEpoch",        selector: "b97dd9e2", mutability: "view",        inputs: &[], output_desc: "uint32 epoch" },
@@ -106,11 +103,9 @@ const CONSENSUS_ABI: &[AbiFunction] = &[
 ];
 
 // ── ABI encoding ──────────────────────────────────────────────────────────
-
 fn is_dynamic_type(ty: &str) -> bool {
     ty == "string" || ty == "bytes" || ty.ends_with("[]")
 }
-
 fn abi_encode_static(ty: &str, value: &str) -> Result<String, String> {
     let v = value.trim();
     match ty {
@@ -133,7 +128,6 @@ fn abi_encode_static(ty: &str, value: &str) -> Result<String, String> {
         }
     }
 }
-
 fn abi_encode_dynamic(ty: &str, value: &str) -> Result<String, String> {
     let v = value.trim();
     match ty {
@@ -155,7 +149,6 @@ fn abi_encode_dynamic(ty: &str, value: &str) -> Result<String, String> {
         _ => Err(format!("Unsupported dynamic type: {}", ty))
     }
 }
-
 fn build_calldata(selector: &str, types: &[String], values: &[String]) -> Result<String, String> {
     let n = types.len();
     let mut heads: Vec<String> = Vec::new();
@@ -178,11 +171,6 @@ fn build_calldata(selector: &str, types: &[String], values: &[String]) -> Result
     for t in &tails { result.push_str(t); }
     Ok(result)
 }
-
-fn abi_encode_param(ty: &str, value: &str) -> Result<String, String> {
-    abi_encode_static(ty, value)
-}
-
 fn decode_result(hex: &str, output_desc: &str) -> String {
     let raw = hex.trim_start_matches("0x");
     if raw.is_empty() || raw == "0" { return "(empty)".to_string(); }
@@ -217,7 +205,6 @@ fn decode_result(hex: &str, output_desc: &str) -> String {
     }
     if raw.len() > 80 { format!("0x{}…", &raw[..80]) } else { format!("0x{}", raw) }
 }
-
 fn js_send_tx(addr: &str, data: &str) -> String {
     [
         r#"(async function(){if(!window.ethereum)return{error:"No wallet"};try{"#,
@@ -228,7 +215,6 @@ fn js_send_tx(addr: &str, data: &str) -> String {
         r#"return{hash:h};}catch(e){return{error:e.message||"Failed"};}})()"#,
     ].concat()
 }
-
 fn ls_save_abi(address: &str, json_str: &str) {
     let key = ["abi_", &address.to_lowercase()].concat();
     if let Ok(escaped) = serde_json::to_string(json_str) {
@@ -236,19 +222,16 @@ fn ls_save_abi(address: &str, json_str: &str) {
         let _ = js_sys::eval(&js);
     }
 }
-
 fn ls_load_abi(address: &str) -> String {
     let key = ["abi_", &address.to_lowercase()].concat();
     let js = ["(localStorage.getItem(", &serde_json::to_string(&key).unwrap_or_default(), ")||'')"].concat();
     js_sys::eval(&js).ok().and_then(|v| v.as_string()).unwrap_or_default()
 }
-
 fn ls_clear_abi(address: &str) {
     let key = ["abi_", &address.to_lowercase()].concat();
     let js = ["localStorage.removeItem(", &serde_json::to_string(&key).unwrap_or_default(), ")"].concat();
     let _ = js_sys::eval(&js);
 }
-
 fn parse_abi_json(json_str: &str) -> Vec<DynFunction> {
     if json_str.trim().is_empty() { return vec![]; }
     let escaped = json_str
@@ -308,7 +291,6 @@ fn parse_abi_json(json_str: &str) -> Vec<DynFunction> {
         Some(DynFunction { name, selector, mutability, inputs, output_desc })
     }).collect()
 }
-
 async fn exec_js_promise(js: &str) -> (Option<String>, Option<String>) {
     match js_sys::eval(js) {
         Ok(pv) => {
@@ -329,34 +311,29 @@ async fn exec_js_promise(js: &str) -> (Option<String>, Option<String>) {
         Err(_) => (None, Some("Failed to execute JS".to_string()))
     }
 }
-
-/// Build the JS that renders a DynFnCard entirely in vanilla JS
-/// Returns a JS string that injects the card into the container div
+/// Build the JS that renders a DynFnCard entirely in vanilla JS.
+/// Reads now go through the indexer's POST /call (`call_url`), replacing the
+/// old direct eth_call against the public RPC WebSocket.
 fn build_dyncard_js(
     container_id: &str,
     func: &DynFunction,
     addr: &str,
     is_write: bool,
     all_funcs: &[DynFunction],
-    rpc_url: &str,
+    call_url: &str,
 ) -> String {
-    // Serialize inputs as JSON for JS consumption
     let inputs_json = serde_json::to_string(
         &func.inputs.iter().map(|p| serde_json::json!({"name": p.name, "ty": p.ty})).collect::<Vec<_>>()
     ).unwrap_or_else(|_| "[]".to_string());
-
-    // Serialize reader map: param_bare_name -> {selector, output_desc}
     let reader_map: std::collections::HashMap<String, serde_json::Value> = all_funcs.iter()
         .filter(|f| (f.mutability == "view" || f.mutability == "pure") && f.inputs.is_empty())
         .map(|f| (f.name.to_lowercase(), serde_json::json!({"sel": f.selector, "out": f.output_desc})))
         .collect();
     let readers_json = serde_json::to_string(&reader_map).unwrap_or_else(|_| "{}".to_string());
-
     let is_write_js = if is_write { "true" } else { "false" };
     let sel = &func.selector;
     let fn_name = &func.name;
     let output_desc = &func.output_desc;
-
     [
         r#"(function(){
 var cid="#, &serde_json::to_string(container_id).unwrap_or_default(), r#";
@@ -367,10 +344,9 @@ var sel="#, &serde_json::to_string(sel).unwrap_or_default(), r#";
 var inputs="#, &inputs_json, r#";
 var readers="#, &readers_json, r#";
 var addr="#, &serde_json::to_string(addr).unwrap_or_default(), r#";
-var rpc="#, &serde_json::to_string(rpc_url).unwrap_or_default(), r#";
+var callUrl="#, &serde_json::to_string(call_url).unwrap_or_default(), r#";
 var isWrite="#, is_write_js, r#";
 var outDesc="#, &serde_json::to_string(output_desc).unwrap_or_default(), r#";
-
 // Build input fields HTML
 var fieldsHtml='';
 inputs.forEach(function(p,i){
@@ -379,11 +355,9 @@ inputs.forEach(function(p,i){
   fieldsHtml+='<input class="contract-fn-input" id="'+cid+'-'+i+'" placeholder="'+p.ty+'">';
   fieldsHtml+='</div>';
 });
-
 var btnClass=isWrite?'contract-fn-btn contract-fn-btn-write':'contract-fn-btn contract-fn-btn-read';
 var btnLabel=isWrite?'Send Transaction':'Query';
 var prefillBtn=isWrite&&inputs.length>0?'<button class="contract-fn-btn contract-fn-btn-read" id="'+cid+'-prefill">↺ Pre-fill current values</button>':'';
-
 el.innerHTML=
   '<div class="contract-fn-header">'+
   '<span class="contract-fn-name">'+fnName+'</span>'+
@@ -396,7 +370,6 @@ el.innerHTML=
   '</div>'+
   '<div id="'+cid+'-result" style="display:none"></div>'+
   '<div id="'+cid+'-error" style="display:none"></div>';
-
 // ABI encode helpers
 function encodeStatic(ty,v){
   v=(v||'').trim();
@@ -427,17 +400,15 @@ function buildCalldata(sel,inputs,values){
   });
   return'0x'+sel+heads.join('')+tails.join('');
 }
-
 // Decode result
 function decodeResult(hex,outDesc){
-  var raw=hex.replace('0x','');
+  var raw=(hex||'').replace('0x','');
   if(!raw||raw==='0')return'(empty)';
   if(outDesc&&outDesc.includes('address')&&raw.length>=64)return'0x'+raw.slice(-40);
   if(outDesc==='bool'&&raw.length>=64)return parseInt(raw.slice(-1),16)===1?'true':'false';
   if(outDesc&&(outDesc.includes('uint')||outDesc.includes('int'))&&!outDesc.includes('tuple')&&raw.length<=64){
     try{return BigInt('0x'+raw.replace(/^0+/,'')||'0').toString();}catch(e){}
   }
-  // Try ABI string decode
   if(raw.length>=128){
     try{
       var len=parseInt(raw.slice(64,128),16);
@@ -450,7 +421,6 @@ function decodeResult(hex,outDesc){
   }
   return raw.length>80?'0x'+raw.slice(0,80)+'…':'0x'+raw;
 }
-
 // Show result/error
 function showResult(text){
   var r=document.getElementById(cid+'-result');
@@ -464,8 +434,7 @@ function clearOutput(){
   var r=document.getElementById(cid+'-result');var e=document.getElementById(cid+'-error');
   if(r)r.style.display='none';if(e)e.style.display='none';
 }
-
-// Prefill button
+// Prefill button — reads via indexer POST /call: {to,data} -> {ok,result,error}
 var prefillEl=document.getElementById(cid+'-prefill');
 if(prefillEl){
   prefillEl.addEventListener('click',function(){
@@ -477,10 +446,10 @@ if(prefillEl){
       var bare=p.name.replace(/^_/,'').toLowerCase();
       var reader=readers[bare];
       if(!reader){done++;if(done>=pending){prefillEl.textContent='Pre-fill current values';prefillEl.disabled=false;}return;}
-      fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({jsonrpc:'2.0',method:'eth_call',params:[{to:addr,data:'0x'+reader.sel},'latest'],id:1})
+      fetch(callUrl,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({to:addr,data:'0x'+reader.sel})
       }).then(function(r){return r.json();}).then(function(d){
-        var val=decodeResult(d.result||'',reader.out);
+        var val=decodeResult(d.result,reader.out);
         var inp=document.getElementById(cid+'-'+i);
         if(inp)inp.value=val;
         done++;if(done>=pending){prefillEl.textContent='Pre-fill current values';prefillEl.disabled=false;}
@@ -488,7 +457,6 @@ if(prefillEl){
     });
   });
 }
-
 // Submit button
 var btn=document.getElementById(cid+'-btn');
 if(btn){
@@ -500,11 +468,11 @@ if(btn){
     catch(e){showError(e.toString());return;}
     btn.disabled=true;btn.textContent=isWrite?'Sending…':'Querying…';
     if(!isWrite){
-      fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({jsonrpc:'2.0',method:'eth_call',params:[{to:addr,data:calldata},'latest'],id:1})
+      fetch(callUrl,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({to:addr,data:calldata})
       }).then(function(r){return r.json();}).then(function(d){
-        if(d.error)showError(JSON.stringify(d.error));
-        else showResult(decodeResult(d.result||'',outDesc));
+        if(!d.ok)showError(d.error||'call reverted');
+        else showResult(decodeResult(d.result,outDesc));
       }).catch(function(e){showError(e.toString());})
       .finally(function(){btn.disabled=false;btn.textContent=btnLabel;});
     } else {
@@ -528,6 +496,7 @@ if(btn){
 pub fn ContractPage(address: String) -> Element {
     let mut info: Signal<Option<ContractInfo>>         = use_signal(|| None);
     let mut transfers: Signal<Vec<TokenTransfer>>      = use_signal(|| vec![]);
+    let mut transfers_total: Signal<u64>               = use_signal(|| 0);
     let mut loading                                    = use_signal(|| true);
     let mut error: Signal<Option<String>>              = use_signal(|| None);
     let mut signatures: Signal<Vec<FunctionSignature>> = use_signal(|| vec![]);
@@ -540,6 +509,9 @@ pub fn ContractPage(address: String) -> Element {
     let mut fn_results: Signal<std::collections::HashMap<String, String>>      = use_signal(|| std::collections::HashMap::new());
     let mut fn_loading: Signal<std::collections::HashMap<String, bool>>        = use_signal(|| std::collections::HashMap::new());
     let mut fn_errors:  Signal<std::collections::HashMap<String, String>>      = use_signal(|| std::collections::HashMap::new());
+    let mut transfers_page: Signal<u64> = use_signal(|| 0);
+    let mut transfers_more_loading      = use_signal(|| false);
+
     let addr_clone = address.clone();
     use_effect(move || {
         let address = addr_clone.clone();
@@ -566,29 +538,35 @@ pub fn ContractPage(address: String) -> Element {
                 Ok(i)  => info.set(Some(i)),
                 Err(e) => { error.set(Some(e)); loading.set(false); return; }
             }
-            if let Ok(latest) = get_block_number().await {
-                let from = latest.saturating_sub(5000);
-                if let Ok(logs) = get_token_transfers(&address, from, latest).await {
-                    let mut parsed = parse_transfer_logs(logs);
-                    let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-                    for t in parsed.iter_mut() {
-                        let sym = if let Some(s) = seen.get(&t.token_address) { s.clone() }
-                            else {
-                                let s = get_token_symbol(&t.token_address).await;
-                                seen.insert(t.token_address.clone(), s.clone());
-                                s
-                            };
-                        t.token_symbol = sym;
-                    }
-                    transfers.set(parsed);
-                }
+            // Full transfer history where this contract is sender/recipient of an ERC-20 transfer.
+            if let Ok((xfers, total)) = get_address_transfers(&address, 0, 25).await {
+                transfers.set(xfers);
+                transfers_total.set(total);
             }
             loading.set(false);
         });
     });
+
+    let load_more_transfers = {
+        let address = address.clone();
+        move |_| {
+            let address = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                transfers_more_loading.set(true);
+                let next = *transfers_page.read() + 1;
+                if let Ok((mut more, _)) = get_address_transfers(&address, next, 25).await {
+                    transfers.write().append(&mut more);
+                    transfers_page.set(next);
+                }
+                transfers_more_loading.set(false);
+            });
+        }
+    };
+
     let is_registry = address.to_lowercase() == CONSENSUS_REGISTRY.to_lowercase();
     let avatar_char = address.chars().nth(2).unwrap_or('C').to_uppercase().next().unwrap_or('C');
     let has_upload  = !uploaded_abi.read().is_empty();
+
     rsx! {
         div { class: "page",
             if *loading.read() {
@@ -643,7 +621,7 @@ pub fn ContractPage(address: String) -> Element {
                     button { class: if *active_tab.read() == "write"     { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("write"),     "Write Contract" }
                     button { class: if *active_tab.read() == "transfers" { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("transfers"),
                         "Transfers"
-                        span { class: "tab-count", "({transfers.read().len()})" }
+                        span { class: "tab-count", "({transfers_total.read()})" }
                     }
                     button {
                         class: if *active_tab.read() == "bytecode" { "tab-btn tab-active" } else { "tab-btn" },
@@ -896,10 +874,10 @@ pub fn ContractPage(address: String) -> Element {
                     div { class: "panel",
                         div { class: "panel-header",
                             span { class: "panel-title", "Token Transfers" }
-                            span { style: "color:var(--text-muted); font-size:11px;", "Last 5,000 blocks" }
+                            span { style: "color:var(--text-muted); font-size:11px;", { format!("{} total", transfers_total.read()) } }
                         }
                         if transfers.read().is_empty() {
-                            div { class: "panel-empty", "No token transfers found in the last 5,000 blocks." }
+                            div { class: "panel-empty", "No token transfers found for this contract." }
                         } else {
                             div { class: "table-wrapper",
                                 table { class: "tx-table",
@@ -916,6 +894,16 @@ pub fn ContractPage(address: String) -> Element {
                                                 td { style: "color:var(--accent-green); font-weight:600;", { format!("{:.4} {}", t.amount, t.token_symbol) } }
                                             }
                                         }
+                                    }
+                                }
+                            }
+                            if transfers.read().len() < *transfers_total.read() as usize {
+                                div { style: "padding:16px; text-align:center;",
+                                    button {
+                                        class: "contract-fn-btn contract-fn-btn-read",
+                                        disabled: *transfers_more_loading.read(),
+                                        onclick: load_more_transfers,
+                                        if *transfers_more_loading.read() { "Loading…" } else { "Load More" }
                                     }
                                 }
                             }
@@ -1057,10 +1045,15 @@ fn StaticFnCard(
                                 match build_calldata(&sel, &types, &vals) {
                                     Ok(calldata) => {
                                         if !iw {
-                                            let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
-                                            match rpc_call::<_, String>("eth_call", params).await {
-                                                Ok(hex) => { fn_results.write().insert(key.clone(), decode_result(&hex, &out)); }
-                                                Err(e)  => { fn_errors.write().insert(key.clone(), e); }
+                                            match contract_call(&addr, &calldata).await {
+                                                Ok(resp) if resp.ok => {
+                                                    let hex = resp.result.unwrap_or_default();
+                                                    fn_results.write().insert(key.clone(), decode_result(&hex, &out));
+                                                }
+                                                Ok(resp) => {
+                                                    fn_errors.write().insert(key.clone(), resp.error.unwrap_or_else(|| "call reverted".to_string()));
+                                                }
+                                                Err(e) => { fn_errors.write().insert(key.clone(), e); }
                                             }
                                         } else {
                                             let js = js_send_tx(&addr, &calldata);
@@ -1102,16 +1095,16 @@ fn DynFnCard(
     all_funcs: Vec<DynFunction>,
 ) -> Element {
     let container_id = format!("dyncard-{}-{}", func.selector, if is_write { "w" } else { "r" });
+    let call_url = format!("{INDEXER_URL}/call");
     let js = build_dyncard_js(
         &container_id,
         &func,
         &addr,
         is_write,
         &all_funcs,
-        "https://rpc.telcoin.network",
+        &call_url,
     );
     use_effect(move || {
-        // Small delay to ensure DOM is ready
         let js2 = js.clone();
         wasm_bindgen_futures::spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(50).await;
@@ -1179,10 +1172,14 @@ fn GenericFnCard(
                             fn_results.write().remove(&key);
                             wasm_bindgen_futures::spawn_local(async move {
                                 if !iw {
-                                    let params = serde_json::json!([{"to": &addr, "data": &calldata}, "latest"]);
-                                    match rpc_call::<_, String>("eth_call", params).await {
-                                        Ok(hex) => { fn_results.write().insert(key.clone(), hex); }
-                                        Err(e)  => { fn_errors.write().insert(key.clone(), e); }
+                                    match contract_call(&addr, &calldata).await {
+                                        Ok(resp) if resp.ok => {
+                                            fn_results.write().insert(key.clone(), resp.result.unwrap_or_default());
+                                        }
+                                        Ok(resp) => {
+                                            fn_errors.write().insert(key.clone(), resp.error.unwrap_or_else(|| "call reverted".to_string()));
+                                        }
+                                        Err(e) => { fn_errors.write().insert(key.clone(), e); }
                                     }
                                 } else {
                                     let js = js_send_tx(&addr, &calldata);
