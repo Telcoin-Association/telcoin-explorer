@@ -2,8 +2,8 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_latest_blocks, get_network_stats,
-    get_transaction, Transaction,
+    get_latest_blocks, get_network_stats, get_latest_txs,
+    Transaction,
     Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas,
 };
 use crate::components::loading::{Loading, ErrorBox};
@@ -20,26 +20,15 @@ pub fn HomePage() -> Element {
 
     use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
-            let (stats_res, blocks_res) = futures::join!(
-                get_network_stats(),
-                get_latest_blocks(10)
-            );
             txs_loading.set(true);
-            let tx_hashes: Vec<String> = blocks_res.as_ref()
-                .map(|bs| bs.iter()
-                    .flat_map(|b| b.transactions.iter().take(3).cloned().collect::<Vec<_>>())
-                    .take(10).collect())
-                .unwrap_or_default();
-            let mut full_txs = Vec::new();
-            for hash in tx_hashes.iter() {
-                if let Ok(tx) = get_transaction(hash).await {
-                    full_txs.push(tx);
-                    if full_txs.len() >= 10 { break; }
-                }
-            }
-            home_txs.set(full_txs);
-            txs_loading.set(false);
-            // Initial load: show an error banner if either fetch fails — there's
+            // Fetch stats, blocks, and transactions all in parallel — no more
+            // sequential per-hash lookups, so blocks and txs update together.
+            let (stats_res, blocks_res, txs_res) = futures::join!(
+                get_network_stats(),
+                get_latest_blocks(10),
+                get_latest_txs(0, 10),
+            );
+            // Initial load: show an error banner if any fetch fails — there's
             // no prior data to fall back to.
             match stats_res {
                 Ok(s)  => stats.set(Some(s)),
@@ -49,6 +38,11 @@ pub fn HomePage() -> Element {
                 Ok(b)  => blocks.set(b),
                 Err(e) => error.set(Some(e)),
             }
+            match txs_res {
+                Ok((t, _)) => home_txs.set(t),
+                Err(e)     => error.set(Some(e)),
+            }
+            txs_loading.set(false);
             let now = js_sys::Date::new_0();
             last_updated.set(format!("{:02}:{:02}:{:02}",
                 now.get_hours(), now.get_minutes(), now.get_seconds()));
@@ -59,31 +53,14 @@ pub fn HomePage() -> Element {
     use_future(move || async move {
         loop {
             gloo_timers::future::TimeoutFuture::new(30_000).await;
-            let (stats_res, blocks_res) = futures::join!(
-                get_network_stats(),
-                get_latest_blocks(10)
-            );
             txs_loading.set(true);
-            let tx_hashes: Vec<String> = blocks_res.as_ref()
-                .map(|bs| bs.iter()
-                    .flat_map(|b| b.transactions.iter().take(3).cloned().collect::<Vec<_>>())
-                    .take(10).collect())
-                .unwrap_or_default();
-            let mut full_txs = Vec::new();
-            for hash in tx_hashes.iter() {
-                if let Ok(tx) = get_transaction(hash).await {
-                    full_txs.push(tx);
-                    if full_txs.len() >= 10 { break; }
-                }
-            }
-            // Background refresh: a transient fetch failure should never blank
-            // out an already-rendered page. Only replace home_txs if we got a
-            // non-empty result OR the previous list happens to be empty too;
-            // otherwise keep showing the last-known-good transactions.
-            if !full_txs.is_empty() || home_txs.read().is_empty() {
-                home_txs.set(full_txs);
-            }
-            txs_loading.set(false);
+            // All three fetch in parallel, same as the initial load — keeps
+            // blocks and transactions updating in lockstep on every tick.
+            let (stats_res, blocks_res, txs_res) = futures::join!(
+                get_network_stats(),
+                get_latest_blocks(10),
+                get_latest_txs(0, 10),
+            );
             // Background refresh: on success, update data and clear any stale
             // error banner. On failure, log and silently keep the last-known-good
             // data on screen rather than surfacing a persistent error banner.
@@ -95,6 +72,11 @@ pub fn HomePage() -> Element {
                 Ok(b)  => { blocks.set(b); error.set(None); }
                 Err(e) => { web_sys::console::warn_1(&format!("blocks refresh failed: {e}").into()); }
             }
+            match txs_res {
+                Ok((t, _)) => { home_txs.set(t); error.set(None); }
+                Err(e)     => { web_sys::console::warn_1(&format!("txs refresh failed: {e}").into()); }
+            }
+            txs_loading.set(false);
             let now = js_sys::Date::new_0();
             last_updated.set(format!("{:02}:{:02}:{:02}",
                 now.get_hours(), now.get_minutes(), now.get_seconds()));
