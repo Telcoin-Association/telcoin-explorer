@@ -119,7 +119,17 @@ pub fn TransactionPage(hash: String) -> Element {
                             div { class: "detail-row",
                                 div { class: "detail-key", "Gas Price" }
                                 div { class: "detail-val",
-                                    { format!("{:.4} Gwei ({} wei)", t.gas_price as f64 / 1e9, t.gas_price) }
+                                    {
+                                        let gwei_whole = t.gas_price / 1_000_000_000;
+                                        let gwei_frac  = t.gas_price % 1_000_000_000;
+                                        let gwei = if gwei_frac == 0 {
+                                            format!("{gwei_whole}")
+                                        } else {
+                                            let frac_str = format!("{:09}", gwei_frac);
+                                            format!("{gwei_whole}.{}", frac_str.trim_end_matches('0'))
+                                        };
+                                        format!("{gwei} Gwei ({} wei)", t.gas_price)
+                                    }
                                 }
                             }
                             div { class: "detail-row",
