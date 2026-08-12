@@ -9,6 +9,73 @@ use crate::services::rpc::{
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
+/// Escape a value for a CSV field: wrap in quotes and double any internal quotes.
+fn csv_escape(v: &str) -> String {
+    format!("\"{}\"", v.replace('"', "\"\""))
+}
+
+/// Trigger a browser download of `content` as a file named `filename`.
+/// Uses a Blob + temporary <a download> click, all client-side — no server round-trip.
+fn download_csv(filename: &str, content: &str) {
+    let js = [
+        "(function(){",
+        "var blob=new Blob([", &serde_json::to_string(content).unwrap_or_default(), "],{type:'text/csv;charset=utf-8;'});",
+        "var url=URL.createObjectURL(blob);",
+        "var a=document.createElement('a');",
+        "a.href=url;",
+        "a.download=", &serde_json::to_string(filename).unwrap_or_default(), ";",
+        "document.body.appendChild(a);",
+        "a.click();",
+        "document.body.removeChild(a);",
+        "URL.revokeObjectURL(url);",
+        "})()",
+    ].concat();
+    let _ = js_sys::eval(&js);
+}
+
+fn txs_to_csv(txs: &[Transaction]) -> String {
+    let mut out = String::from("Hash,Block,From,To,Value (TEL),Gas Used,Gas Price (wei),Fee (TEL),Status,Nonce\n");
+    for tx in txs {
+        let fee = tx.gas_used as f64 * tx.gas_price as f64 / 1e18;
+        let status = match tx.status {
+            Some(true)  => "Success",
+            Some(false) => "Failed",
+            None        => "",
+        };
+        out.push_str(&format!(
+            "{},{},{},{},{:.6},{},{},{:.8},{},{}\n",
+            csv_escape(&tx.hash),
+            tx.block_number.map(|b| b.to_string()).unwrap_or_default(),
+            csv_escape(&tx.from),
+            csv_escape(&tx.to.clone().unwrap_or_else(|| "Contract Creation".to_string())),
+            tx.value_tel,
+            tx.gas_used,
+            tx.gas_price,
+            fee,
+            status,
+            tx.nonce,
+        ));
+    }
+    out
+}
+
+fn transfers_to_csv(transfers: &[TokenTransfer]) -> String {
+    let mut out = String::from("Tx Hash,Block,From,To,Token Address,Token Symbol,Amount\n");
+    for t in transfers {
+        out.push_str(&format!(
+            "{},{},{},{},{},{},{:.6}\n",
+            csv_escape(&t.tx_hash),
+            t.block_number,
+            csv_escape(&t.from),
+            csv_escape(&t.to),
+            csv_escape(&t.token_address),
+            csv_escape(&t.token_symbol),
+            t.amount,
+        ));
+    }
+    out
+}
+
 #[component]
 pub fn AddressPage(address: String) -> Element {
     let mut balance: Signal<Option<f64>>          = use_signal(|| None);
@@ -26,6 +93,8 @@ pub fn AddressPage(address: String) -> Element {
     let mut contract_flag: Signal<bool>           = use_signal(|| false);
     let mut transfers_page: Signal<u64>           = use_signal(|| 0);
     let mut transfers_more_loading                = use_signal(|| false);
+    let mut txs_export_loading                    = use_signal(|| false);
+    let mut transfers_export_loading              = use_signal(|| false);
 
     let addr_clone = address.clone();
     use_effect(move || {
@@ -39,7 +108,6 @@ pub fn AddressPage(address: String) -> Element {
             match bal_res   { Ok(b) => balance.set(Some(b)), Err(e) => error.set(Some(e)) }
             match count_res { Ok(n) => tx_count.set(Some(n)), Err(_) => {} }
             loading.set(false);
-
             // Full transaction history — indexed pointer lookup, no block scanning.
             if let Ok((txs, total)) = get_address_txs(&address, 0, 25).await {
                 native_txs.set(txs);
@@ -50,7 +118,6 @@ pub fn AddressPage(address: String) -> Element {
                 transfers.set(xfers);
                 transfers_total.set(total);
             }
-
             contract_flag.set(is_contract(&address).await);
             txs_loading.set(false);
         });
@@ -83,6 +150,59 @@ pub fn AddressPage(address: String) -> Element {
                     transfers_page.set(next);
                 }
                 transfers_more_loading.set(false);
+            });
+        }
+    };
+
+    // Export fetches the FULL history (looping every page), independent of
+    // however much is currently loaded on screen via "Load More".
+    let export_txs = {
+        let address = address.clone();
+        move |_| {
+            let address = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                txs_export_loading.set(true);
+                let mut all: Vec<Transaction> = Vec::new();
+                let mut page = 0u64;
+                loop {
+                    match get_address_txs(&address, page, 100).await {
+                        Ok((mut batch, total)) => {
+                            if batch.is_empty() { break; }
+                            all.append(&mut batch);
+                            if all.len() as u64 >= total { break; }
+                            page += 1;
+                        }
+                        Err(_) => break,
+                    }
+                }
+                let csv = txs_to_csv(&all);
+                download_csv(&format!("{}_transactions.csv", &address[..10.min(address.len())]), &csv);
+                txs_export_loading.set(false);
+            });
+        }
+    };
+    let export_transfers = {
+        let address = address.clone();
+        move |_| {
+            let address = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                transfers_export_loading.set(true);
+                let mut all: Vec<TokenTransfer> = Vec::new();
+                let mut page = 0u64;
+                loop {
+                    match get_address_transfers(&address, page, 100).await {
+                        Ok((mut batch, total)) => {
+                            if batch.is_empty() { break; }
+                            all.append(&mut batch);
+                            if all.len() as u64 >= total { break; }
+                            page += 1;
+                        }
+                        Err(_) => break,
+                    }
+                }
+                let csv = transfers_to_csv(&all);
+                download_csv(&format!("{}_token_transfers.csv", &address[..10.min(address.len())]), &csv);
+                transfers_export_loading.set(false);
             });
         }
     };
@@ -159,8 +279,19 @@ pub fn AddressPage(address: String) -> Element {
                     div { class: "panel",
                         div { class: "panel-header",
                             span { class: "panel-title", "Transactions" }
-                            span { style: "color:var(--text-muted); font-size:11px;",
-                                { format!("{} total", txs_total.read()) }
+                            div { style: "display:flex; align-items:center; gap:12px;",
+                                span { style: "color:var(--text-muted); font-size:11px;",
+                                    { format!("{} total", txs_total.read()) }
+                                }
+                                if *txs_total.read() > 0 {
+                                    button {
+                                        class: "contract-fn-btn contract-fn-btn-read",
+                                        style: "padding:4px 12px; font-size:11px;",
+                                        disabled: *txs_export_loading.read(),
+                                        onclick: export_txs,
+                                        if *txs_export_loading.read() { "Exporting…" } else { "⬇ Export CSV" }
+                                    }
+                                }
                             }
                         }
                         if *txs_loading.read() {
@@ -270,8 +401,19 @@ pub fn AddressPage(address: String) -> Element {
                     div { class: "panel",
                         div { class: "panel-header",
                             span { class: "panel-title", "ERC-20 Token Transfers" }
-                            span { style: "color:var(--text-muted); font-size:11px;",
-                                { format!("{} total", transfers_total.read()) }
+                            div { style: "display:flex; align-items:center; gap:12px;",
+                                span { style: "color:var(--text-muted); font-size:11px;",
+                                    { format!("{} total", transfers_total.read()) }
+                                }
+                                if *transfers_total.read() > 0 {
+                                    button {
+                                        class: "contract-fn-btn contract-fn-btn-read",
+                                        style: "padding:4px 12px; font-size:11px;",
+                                        disabled: *transfers_export_loading.read(),
+                                        onclick: export_transfers,
+                                        if *transfers_export_loading.read() { "Exporting…" } else { "⬇ Export CSV" }
+                                    }
+                                }
                             }
                         }
                         div { class: "table-wrapper",

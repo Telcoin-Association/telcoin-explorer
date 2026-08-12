@@ -11,6 +11,7 @@ pub fn TransactionPage(hash: String) -> Element {
     let loading                              = use_signal(|| true);
     let error: Signal<Option<String>>        = use_signal(|| None);
     let mut tx_success: Signal<Option<bool>> = use_signal(|| None);
+    let mut input_expanded = use_signal(|| false);
     let hash_clone = hash.clone();
 
     use_effect(move || {
@@ -181,9 +182,33 @@ pub fn TransactionPage(hash: String) -> Element {
                                     }
                                 }
                                 div { class: "detail-row",
-                                    div { class: "detail-key", "Raw Hex" }
-                                    div { class: "detail-val",
-                                        div { class: "input-hex-box", "{t.input}" }
+                                    div { class: "detail-key",
+                                        "Raw Hex"
+                                        span { style: "display:block; font-size:11px; color:var(--text-muted); font-weight:400; margin-top:2px;",
+                                            { format!("{} bytes", (t.input.len().saturating_sub(2)) / 2) }
+                                        }
+                                    }
+                                    div { class: "detail-val", style: "flex-direction:column; align-items:flex-start; gap:8px;",
+                                        div {
+                                            class: "input-hex-box",
+                                            style: if *input_expanded.read() {
+                                                "max-height:none; overflow-wrap:anywhere; word-break:break-all;"
+                                            } else {
+                                                "max-height:120px; overflow:hidden; overflow-wrap:anywhere; word-break:break-all; position:relative;"
+                                            },
+                                            "{t.input}"
+                                        }
+                                        div { style: "display:flex; gap:10px; align-items:center;",
+                                            if t.input.len() > 400 {
+                                                button {
+                                                    class: "action-link",
+                                                    style: "background:none; border:none; cursor:pointer; padding:0; font-size:12px;",
+                                                    onclick: move |_| { let cur = *input_expanded.read(); input_expanded.set(!cur); },
+                                                    if *input_expanded.read() { "Show Less ▲" } else { "Show Full Input Data ▼" }
+                                                }
+                                            }
+                                            CopyButton { text: t.input.clone() }
+                                        }
                                     }
                                 }
                             }

@@ -37,7 +37,7 @@ pub fn CopyButton(text: String) -> Element {
                     let mut copied = copied.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         // Use JSON.stringify to safely encode the string for clipboard
-                        let script = format!("navigator.clipboard.writeText(JSON.parse({}))", 
+                        let script = format!("navigator.clipboard.writeText({})", 
                             serde_json::to_string(&t).unwrap_or_default());
                         let _ = js_sys::eval(&script);
                         copied.set(true);
