@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     resolve_selectors, FunctionSignature,
     get_contract_info, get_address_transfers, contract_call, ContractInfo,
-    TokenTransfer, shorten_hash, shorten_addr, unix_to_age,
+    TokenTransfer, shorten_hash, shorten_addr, unix_to_age, format_wei_exact, format_amount,
     CONSENSUS_REGISTRY, INDEXER_URL,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
@@ -656,7 +656,7 @@ pub fn ContractPage(address: String) -> Element {
                             }
                             div { class: "detail-row",
                                 div { class: "detail-key", "TEL Balance" }
-                                div { class: "detail-val", span { style: "font-weight:600;", { format!("{:.6} TEL", contract.balance) } } }
+                                div { class: "detail-val", span { style: "font-weight:600;", { format!("{} TEL", format_wei_exact(contract.balance_wei.parse().unwrap_or(0))) } } }
                             }
                             div { class: "detail-row",
                                 div { class: "detail-key", "Transactions" }
@@ -891,7 +891,7 @@ pub fn ContractPage(address: String) -> Element {
                                                 td { Link { to: Route::AddressPage { address: t.from.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.from)}" } } }
                                                 td { span { class: "transfer-arrow", "→" } }
                                                 td { Link { to: Route::AddressPage { address: t.to.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.to)}" } } }
-                                                td { style: "color:var(--accent-green); font-weight:600;", { format!("{:.4} {}", t.amount, t.token_symbol) } }
+                                                td { style: "color:var(--accent-green); font-weight:600;", { format!("{} {}", format_amount(t.amount), t.token_symbol) } }
                                             }
                                         }
                                     }

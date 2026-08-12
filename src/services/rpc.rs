@@ -88,6 +88,7 @@ pub struct TokenInfo {
 pub struct ContractInfo {
     pub address:        String,
     pub balance:        f64,
+    pub balance_wei:    String,
     pub tx_count:       u64,
     pub bytecode_hex:   String,
     pub bytecode_size:  usize,
@@ -262,6 +263,34 @@ pub fn format_tel(wei: f64) -> String {
     let frac  = ((wei % 1e18) / 1e15) as u64;
     if frac == 0 { format!("{whole}") } else { format!("{whole}.{frac:03}") }
 }
+/// Exact wei -> TEL decimal string using pure integer math (no f64 rounding),
+/// trailing zeros trimmed. Use this everywhere a wei-denominated u128 is
+/// available (transaction value, fee, balance) instead of a pre-divided f64.
+pub fn format_wei_exact(wei: u128) -> String {
+    const BASE: u128 = 1_000_000_000_000_000_000;
+    let whole = wei / BASE;
+    let frac  = wei % BASE;
+    if frac == 0 {
+        format!("{whole}")
+    } else {
+        let frac_str = format!("{:018}", frac);
+        let trimmed = frac_str.trim_end_matches('0');
+        format!("{whole}.{trimmed}")
+    }
+}
+/// Trim a float display to its meaningful digits instead of an arbitrary
+/// fixed decimal count — avoids both truncating real precision and padding
+/// with meaningless zeros. Caps at 8 decimals (beyond that f64 has no more
+/// meaningful precision anyway). Used for token transfer amounts, where the
+/// indexer already computed `amount` as f64 server-side (decimals-adjusted)
+/// and per-transfer decimals aren't available client-side for exact math.
+pub fn format_amount(amount: f64) -> String {
+    if amount == 0.0 { return "0".to_string(); }
+    let mut s = format!("{amount:.8}");
+    while s.ends_with('0') { s.pop(); }
+    if s.ends_with('.') { s.pop(); }
+    s
+}
 pub fn format_gas(gas: u64) -> String {
     if gas >= 1_000_000 { format!("{:.2}M", gas as f64 / 1_000_000.0) }
     else if gas >= 1_000 { format!("{:.1}K", gas as f64 / 1_000.0) }
@@ -332,6 +361,12 @@ pub async fn get_balance(addr: &str) -> Result<f64, String> {
 pub async fn get_tx_count(addr: &str) -> Result<u64, String> {
     let a: ApiAddress = indexer_get(&format!("/address/{addr}")).await?;
     Ok(a.nonce)
+}
+/// Exact balance in wei as a decimal string — no f64 rounding. Use with
+/// `format_wei_exact` (parsed to u128) for display.
+pub async fn get_balance_wei(addr: &str) -> Result<String, String> {
+    let a: ApiAddress = indexer_get(&format!("/address/{addr}")).await?;
+    Ok(a.balance_wei)
 }
 pub async fn is_contract(addr: &str) -> bool {
     indexer_get::<ApiAddress>(&format!("/address/{addr}")).await
@@ -481,6 +516,7 @@ pub async fn get_contract_info(addr: &str) -> Result<ContractInfo, String> {
     Ok(ContractInfo {
         address: addr.to_string(),
         balance: account.balance_tel,
+        balance_wei: account.balance_wei.clone(),
         tx_count: account.nonce,
         bytecode_hex: raw.to_string(),
         bytecode_size,

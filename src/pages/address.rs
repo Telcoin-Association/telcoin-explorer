@@ -3,8 +3,8 @@ use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     is_contract,
-    get_balance, get_tx_count, get_address_txs, get_address_transfers,
-    TokenTransfer, Transaction, shorten_hash, shorten_addr,
+    get_balance_wei, get_tx_count, get_address_txs, get_address_transfers,
+    TokenTransfer, Transaction, shorten_hash, shorten_addr, format_wei_exact, format_amount,
     CONSENSUS_REGISTRY,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
@@ -36,22 +36,22 @@ fn download_csv(filename: &str, content: &str) {
 fn txs_to_csv(txs: &[Transaction]) -> String {
     let mut out = String::from("Hash,Block,From,To,Value (TEL),Gas Used,Gas Price (wei),Fee (TEL),Status,Nonce\n");
     for tx in txs {
-        let fee = tx.gas_used as f64 * tx.gas_price as f64 / 1e18;
+        let fee_wei = tx.gas_used as u128 * tx.gas_price as u128;
         let status = match tx.status {
             Some(true)  => "Success",
             Some(false) => "Failed",
             None        => "",
         };
         out.push_str(&format!(
-            "{},{},{},{},{:.6},{},{},{:.8},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{}\n",
             csv_escape(&tx.hash),
             tx.block_number.map(|b| b.to_string()).unwrap_or_default(),
             csv_escape(&tx.from),
             csv_escape(&tx.to.clone().unwrap_or_else(|| "Contract Creation".to_string())),
-            tx.value_tel,
+            format_wei_exact(tx.value),
             tx.gas_used,
             tx.gas_price,
-            fee,
+            format_wei_exact(fee_wei),
             status,
             tx.nonce,
         ));
@@ -63,14 +63,14 @@ fn transfers_to_csv(transfers: &[TokenTransfer]) -> String {
     let mut out = String::from("Tx Hash,Block,From,To,Token Address,Token Symbol,Amount\n");
     for t in transfers {
         out.push_str(&format!(
-            "{},{},{},{},{},{},{:.6}\n",
+            "{},{},{},{},{},{},{}\n",
             csv_escape(&t.tx_hash),
             t.block_number,
             csv_escape(&t.from),
             csv_escape(&t.to),
             csv_escape(&t.token_address),
             csv_escape(&t.token_symbol),
-            t.amount,
+            format_amount(t.amount),
         ));
     }
     out
@@ -78,7 +78,7 @@ fn transfers_to_csv(transfers: &[TokenTransfer]) -> String {
 
 #[component]
 pub fn AddressPage(address: String) -> Element {
-    let mut balance: Signal<Option<f64>>          = use_signal(|| None);
+    let mut balance_wei: Signal<Option<String>>   = use_signal(|| None);
     let mut tx_count: Signal<Option<u64>>         = use_signal(|| None);
     let mut transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
     let mut transfers_total: Signal<u64>          = use_signal(|| 0);
@@ -102,10 +102,10 @@ pub fn AddressPage(address: String) -> Element {
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
             let (bal_res, count_res) = futures::join!(
-                get_balance(&address),
+                get_balance_wei(&address),
                 get_tx_count(&address),
             );
-            match bal_res   { Ok(b) => balance.set(Some(b)), Err(e) => error.set(Some(e)) }
+            match bal_res   { Ok(w) => balance_wei.set(Some(w)), Err(e) => error.set(Some(e)) }
             match count_res { Ok(n) => tx_count.set(Some(n)), Err(_) => {} }
             loading.set(false);
             // Full transaction history — indexed pointer lookup, no block scanning.
@@ -242,9 +242,9 @@ pub fn AddressPage(address: String) -> Element {
                             span { class: "address-hash-text", "{address}" }
                             CopyButton { text: address.clone() }
                         }
-                        if let Some(bal) = *balance.read() {
+                        if let Some(wei_str) = balance_wei.read().as_ref() {
                             div { class: "address-balance-big",
-                                { format!("{:.6}", bal) }
+                                { format_wei_exact(wei_str.parse().unwrap_or(0)) }
                                 span { "TEL" }
                             }
                         }
@@ -355,9 +355,9 @@ pub fn AddressPage(address: String) -> Element {
                                                     }
                                                 }
                                                 td { style: "font-family:var(--font-mono); font-size:12px;",
-                                                    if tx.value_tel > 0.0 {
+                                                    if tx.value > 0 {
                                                         span { style: "color:var(--accent-green);",
-                                                            { format!("{:.4} TEL", tx.value_tel) }
+                                                            { format!("{} TEL", format_wei_exact(tx.value)) }
                                                         }
                                                     } else {
                                                         span { class: "td-faint", "—" }
@@ -365,8 +365,8 @@ pub fn AddressPage(address: String) -> Element {
                                                 }
                                                 td { style: "font-family:var(--font-mono); font-size:11px; color:var(--text-muted);",
                                                     {
-                                                        let fee = tx.gas_used as f64 * tx.gas_price as f64 / 1e18;
-                                                        if fee > 0.0 { format!("{:.6}", fee) } else { "—".to_string() }
+                                                        let fee_wei = tx.gas_used as u128 * tx.gas_price as u128;
+                                                        if fee_wei > 0 { format_wei_exact(fee_wei) } else { "—".to_string() }
                                                     }
                                                 }
                                                 td {
@@ -471,7 +471,7 @@ pub fn AddressPage(address: String) -> Element {
                                                     }
                                                 }
                                                 td { style: "color:var(--accent-green); font-weight:600; font-family:var(--font-mono); font-size:12px;",
-                                                    { format!("{:.4}", transfer.amount) }
+                                                    { format_amount(transfer.amount) }
                                                 }
                                             }
                                         }

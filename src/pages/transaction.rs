@@ -2,7 +2,7 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_tx_receipt_status, get_transaction, Transaction, format_tel, shorten_hash};
+    get_tx_receipt_status, get_transaction, Transaction, format_wei_exact, shorten_hash};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
@@ -104,15 +104,15 @@ pub fn TransactionPage(hash: String) -> Element {
                             div { class: "detail-row",
                                 div { class: "detail-key", "Value" }
                                 div { class: "detail-val",
-                                    span { class: "tx-value-big", { format!("{:.4} TEL", t.value_tel) } }
+                                    span { class: "tx-value-big", { format!("{} TEL", format_wei_exact(t.value)) } }
                                 }
                             }
                             div { class: "detail-row",
                                 div { class: "detail-key", "Transaction Fee" }
                                 div { class: "detail-val",
                                     {
-                                        let fee = t.gas_used as f64 * t.gas_price as f64 / 1e18;
-                                        format!("{:.8} TEL", fee)
+                                        let fee_wei = t.gas_used as u128 * t.gas_price as u128;
+                                        format!("{} TEL", format_wei_exact(fee_wei))
                                     }
                                 }
                             }

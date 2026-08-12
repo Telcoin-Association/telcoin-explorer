@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     get_block_by_number, get_transactions_for_block,
     Block, Transaction, shorten_hash, shorten_addr,
-    unix_to_age, unix_to_datetime, format_tel,
+    unix_to_age, unix_to_datetime, format_wei_exact,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton, AddrDisplay};
 
@@ -236,7 +236,7 @@ pub fn BlockPage(block_number: u64) -> Element {
                                     // Value
                                     div { class: "btx-col-value",
                                         span { class: "btx-value",
-                                            { format!("{:.4} TEL", tx.value_tel) }
+                                            { format!("{} TEL", format_wei_exact(tx.value)) }
                                         }
                                     }
                                     // Gas

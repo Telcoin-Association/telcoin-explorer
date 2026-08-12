@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     get_token_info, get_token_transfers_page,
     TokenInfo, TokenTransfer,
-    shorten_hash, shorten_addr,
+    shorten_hash, shorten_addr, format_amount,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
@@ -160,7 +160,7 @@ pub fn TokenPage(address: String) -> Element {
                                     }
                                     div { class: "btx-col-value",
                                         span { class: "btx-value",
-                                            { format!("{} {}", tx.amount, t.symbol) }
+                                            { format!("{} {}", format_amount(tx.amount), t.symbol) }
                                         }
                                     }
                                     div { class: "btx-col-fee",

@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     get_latest_blocks, get_network_stats, get_latest_txs,
     Transaction,
-    Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas,
+    Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas, format_wei_exact,
 };
 use crate::components::loading::{Loading, ErrorBox};
 
@@ -314,8 +314,8 @@ pub fn HomePage() -> Element {
                                         }
                                         span { class: "htr-value",
                                             {
-                                                if tx.value_tel > 0.0 {
-                                                    format!("{:.4} TEL", tx.value_tel)
+                                                if tx.value > 0 {
+                                                    format!("{} TEL", format_wei_exact(tx.value))
                                                 } else {
                                                     "0 TEL".to_string()
                                                 }

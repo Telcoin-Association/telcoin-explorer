@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     get_latest_txs,
-    Transaction, shorten_hash, shorten_addr,
+    Transaction, shorten_hash, shorten_addr, format_wei_exact,
 };
 use crate::components::loading::{Loading, ErrorBox};
 
@@ -142,9 +142,9 @@ pub fn TransactionsPage(page: u64) -> Element {
                                             }
                                         }
                                         td { class: "td-mono",
-                                            if tx.value_tel > 0.0 {
+                                            if tx.value > 0 {
                                                 span { style: "color:var(--accent-green);",
-                                                    { format!("{:.4}", tx.value_tel) }
+                                                    { format_wei_exact(tx.value) }
                                                 }
                                             } else {
                                                 span { class: "td-faint", "0" }
@@ -152,8 +152,8 @@ pub fn TransactionsPage(page: u64) -> Element {
                                         }
                                         td { class: "td-mono td-faint",
                                             {
-                                                let fee = tx.gas_used as f64 * tx.gas_price as f64 / 1e18;
-                                                if fee > 0.0 { format!("{:.6}", fee) } else { "—".to_string() }
+                                                let fee_wei = tx.gas_used as u128 * tx.gas_price as u128;
+                                                if fee_wei > 0 { format_wei_exact(fee_wei) } else { "—".to_string() }
                                             }
                                         }
                                     }
