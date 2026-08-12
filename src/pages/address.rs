@@ -176,7 +176,7 @@ pub fn AddressPage(address: String) -> Element {
                     }
                 }
                 let csv = txs_to_csv(&all);
-                download_csv(&format!("{}_transactions.csv", &address[..10.min(address.len())]), &csv);
+                download_csv(&format!("export-{}-transactions.csv", address), &csv);
                 txs_export_loading.set(false);
             });
         }
@@ -201,7 +201,7 @@ pub fn AddressPage(address: String) -> Element {
                     }
                 }
                 let csv = transfers_to_csv(&all);
-                download_csv(&format!("{}_token_transfers.csv", &address[..10.min(address.len())]), &csv);
+                download_csv(&format!("export-{}-token-transfers.csv", address), &csv);
                 transfers_export_loading.set(false);
             });
         }
