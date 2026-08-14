@@ -205,6 +205,39 @@ fn decode_result(hex: &str, output_desc: &str) -> String {
     }
     if raw.len() > 80 { format!("0x{}…", &raw[..80]) } else { format!("0x{}", raw) }
 }
+/// All 4-byte function selectors found in a contract's bytecode, via the
+/// same PUSH4-opcode scan used for the Bytecode tab's 4byte.directory lookup.
+/// Used to check whether an uploaded ABI's functions actually exist on this
+/// contract — an ABI can be pasted onto ANY address with no validation, so
+/// this is the check that catches a mismatched ABI before someone acts on a
+/// misleading "Result:" value.
+fn bytecode_selectors(bytecode_hex: &str) -> std::collections::HashSet<String> {
+    let raw = bytecode_hex.trim_start_matches("0x");
+    let bytes: Vec<u8> = (0..raw.len().saturating_sub(1)).step_by(2)
+        .filter_map(|i| u8::from_str_radix(&raw[i..i+2], 16).ok())
+        .collect();
+    let mut selectors = std::collections::HashSet::new();
+    let mut i = 0;
+    while i + 4 < bytes.len() {
+        if bytes[i] == 0x63 {
+            selectors.insert(format!("{:02x}{:02x}{:02x}{:02x}", bytes[i+1], bytes[i+2], bytes[i+3], bytes[i+4]));
+            i += 5;
+        } else {
+            i += 1;
+        }
+    }
+    selectors
+}
+/// Names of uploaded-ABI functions whose selector doesn't appear anywhere in
+/// the contract's bytecode — a strong signal the pasted ABI doesn't actually
+/// belong to this contract.
+fn find_mismatched_functions(bytecode_hex: &str, funcs: &[DynFunction]) -> Vec<String> {
+    let selectors = bytecode_selectors(bytecode_hex);
+    funcs.iter()
+        .filter(|f| !selectors.contains(&f.selector.to_lowercase()))
+        .map(|f| f.name.clone())
+        .collect()
+}
 fn js_send_tx(addr: &str, data: &str) -> String {
     [
         r#"(async function(){if(!window.ethereum)return{error:"No wallet"};try{"#,
@@ -566,7 +599,17 @@ pub fn ContractPage(address: String) -> Element {
     let is_registry = address.to_lowercase() == CONSENSUS_REGISTRY.to_lowercase();
     let avatar_char = address.chars().nth(2).unwrap_or('C').to_uppercase().next().unwrap_or('C');
     let has_upload  = !uploaded_abi.read().is_empty();
-
+    // Selector-level sanity check: does this uploaded ABI actually belong to
+    // this contract? An ABI can be pasted onto any address with no
+    // validation -- this flags it if none of the functions' selectors show up
+    // in the bytecode we actually read from chain.
+    let mismatched_functions: Vec<String> = if has_upload {
+        info.read().as_ref()
+            .map(|c| find_mismatched_functions(&c.bytecode_hex, &uploaded_abi.read()))
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
     rsx! {
         div { class: "page",
             if *loading.read() {
@@ -738,6 +781,20 @@ pub fn ContractPage(address: String) -> Element {
                                         "{msg}"
                                     }
                                 }
+                                if !mismatched_functions.is_empty() {
+                                    div {
+                                        style: "margin-bottom:12px; padding:10px 12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.25); border-radius:6px; font-size:12px; color:#eab308;",
+                                        strong { "Warning: ABI may not match this contract. " }
+                                        {
+                                            format!(
+                                                "{} of {} function(s) -- including {} -- were not found in this contract's bytecode. Results from those calls should not be trusted.",
+                                                mismatched_functions.len(),
+                                                uploaded_abi.read().len(),
+                                                mismatched_functions.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+                                            )
+                                        }
+                                    }
+                                }
                                 textarea {
                                     class: "abi-upload-textarea",
                                     placeholder: "Paste ABI JSON here — raw array or full artifact with abi key",
@@ -800,6 +857,11 @@ pub fn ContractPage(address: String) -> Element {
                                 "Call view functions — no wallet required"
                             }
                         }
+                        if !mismatched_functions.is_empty() {
+                            div { style: "margin:12px 20px; padding:10px 12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.25); border-radius:6px; font-size:12px; color:#eab308;",
+                                "Warning: this ABI does not fully match the contract's bytecode — some or all results below may be meaningless. See Overview for details."
+                            }
+                        }
                         div { class: "contract-fn-list",
                             if is_registry {
                                 for func in CONSENSUS_ABI.iter().filter(|f| f.mutability == "view" || f.mutability == "pure") {
@@ -840,6 +902,11 @@ pub fn ContractPage(address: String) -> Element {
                         div { class: "info-note", style: "margin:12px 20px;",
                             span { class: "info-note-icon", "ℹ" }
                             span { "Connect your wallet in the header before calling write functions." }
+                        }
+                        if !mismatched_functions.is_empty() {
+                            div { style: "margin:12px 20px; padding:10px 12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.25); border-radius:6px; font-size:12px; color:#eab308;",
+                                "Warning: this ABI does not fully match the contract's bytecode — sending a transaction below may fail or do something unexpected. See Overview for details."
+                            }
                         }
                         div { class: "contract-fn-list",
                             if is_registry {

@@ -410,7 +410,22 @@ fn run_search() {
         } else if q.chars().all(|c| c.is_ascii_digit()) {
             window.location().set_href(&format!("/block/{}", q)).ok();
         } else {
-            let _ = js_sys::eval("var el=document.getElementById('home-search');if(el){el.style.borderColor='#ef4444';el.style.boxShadow='0 0 0 3px rgba(239,68,68,0.2)';setTimeout(function(){el.style.borderColor='';el.style.boxShadow='';},2000);}");
+            // Not an address/hash/block number — check the on-chain TokenRegistry
+            // for a symbol or name match (e.g. "eUSD", "WTEL") before giving up.
+            let query = q.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                use crate::services::rpc::get_registered_tokens;
+                let tokens = get_registered_tokens().await;
+                let q_lower = query.to_lowercase();
+                let found = tokens.iter().find(|t| {
+                    t.symbol.to_lowercase() == q_lower || t.name.to_lowercase() == q_lower
+                });
+                if let Some(token) = found {
+                    window2.location().set_href(&format!("/token/{}", token.address)).ok();
+                } else {
+                    let _ = js_sys::eval("var el=document.getElementById('home-search');if(el){el.style.borderColor='#ef4444';el.style.boxShadow='0 0 0 3px rgba(239,68,68,0.2)';setTimeout(function(){el.style.borderColor='';el.style.boxShadow='';},2000);}");
+                }
+            });
         }
     }
 }

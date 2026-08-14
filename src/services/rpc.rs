@@ -13,6 +13,11 @@ pub const CHAIN_ID:                 u64  = 2017;
 pub const NATIVE_TOKEN:             &str = "TEL";
 pub const CONSENSUS_REGISTRY:       &str = "0x07e17e17e17e17e17e17e17e17e17e17e17e17e1";
 pub const VALIDATOR_STAKE_REQUIRED: &str = "1,000,000";
+/// The canonical TokenRegistry proxy — survives upgrades, the only address worth hardcoding.
+pub const TOKEN_REGISTRY: &str = "0x96C48BA24D2b48b3bd4a703a3Fc7095E7770d92C";
+/// Stateless, replaceable read helper for the registry — front ends talk to this.
+/// Bulk/paged reads live here, not on the registry itself.
+pub const TOKEN_REGISTRY_LENS: &str = "0xDF31403EBCB5eA4Bd32BB499a8a27967DAA882A3";
 /// Fallback only — always prefer EpochData.epoch_duration read from chain via the indexer.
 pub const EPOCH_DURATION_HOURS:     u64  = 6;
 
@@ -83,6 +88,16 @@ pub struct TokenInfo {
     pub symbol:       String,
     pub decimals:     u8,
     pub total_supply: String,
+}
+/// One token from the on-chain TokenRegistry (via the Lens contract) — not
+/// hardcoded; the list is resolved live from `getAllListedTokens()` so new
+/// registrations show up automatically without a TelScan deploy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisteredToken {
+    pub address:  String,
+    pub name:     String,
+    pub symbol:   String,
+    pub decimals: u8,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractInfo {
@@ -635,4 +650,50 @@ pub async fn get_validator_leader_counts(n: u64) -> Vec<(String, u64)> {
         Ok(resp) => resp.leaders.into_iter().map(|l| (l.address, l.blocks)).collect(),
         Err(_) => vec![],
     }
+}
+
+// ── Token Registry ─────────────────────────────────────────────────────────────
+/// Decode a plain ABI-encoded `address[]` return (standard dynamic array:
+/// offset word, length word, then N right-aligned 32-byte address words).
+fn decode_address_array(hex: &str) -> Vec<String> {
+    let raw = hex.trim_start_matches("0x");
+    if raw.len() < 128 { return vec![]; }
+    let offset_words = usize::from_str_radix(&raw[0..64], 16).unwrap_or(0);
+    let start = offset_words * 2; // word offset -> hex char offset
+    if raw.len() < start + 64 { return vec![]; }
+    let len = usize::from_str_radix(&raw[start..start + 64], 16).unwrap_or(0);
+    let mut out = Vec::with_capacity(len);
+    for i in 0..len {
+        let word_start = start + 64 + i * 64;
+        if raw.len() < word_start + 64 { break; }
+        let word = &raw[word_start..word_start + 64];
+        out.push(format!("0x{}", &word[24..])); // last 20 bytes = 40 hex chars
+    }
+    out
+}
+/// Full list of tokens listed in the on-chain TokenRegistry: resolved live via
+/// the Lens's `getAllListedTokens()` (selector 0xa50d9983 — a plain
+/// `address[]`, cheap to decode), then metadata for each is filled in through
+/// the indexer's cached `/tokens/:addr`. No hardcoded token list — new
+/// registrations show up automatically, nothing to redeploy.
+pub async fn get_registered_tokens() -> Vec<RegisteredToken> {
+    let resp = match contract_call(TOKEN_REGISTRY_LENS, "0xa50d9983").await {
+        Ok(r) if r.ok => r,
+        _ => return vec![],
+    };
+    let hex = resp.result.unwrap_or_default();
+    let addrs = decode_address_array(&hex);
+    let futures: Vec<_> = addrs.iter().map(|a| get_token_info(a)).collect();
+    let results = futures::future::join_all(futures).await;
+    addrs.into_iter().zip(results.into_iter())
+        .filter_map(|(address, info)| {
+            let info = info?;
+            Some(RegisteredToken {
+                address,
+                name: info.name,
+                symbol: info.symbol,
+                decimals: info.decimals,
+            })
+        })
+        .collect()
 }
