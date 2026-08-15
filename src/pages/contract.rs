@@ -260,6 +260,13 @@ fn ls_load_abi(address: &str) -> String {
     let js = ["(localStorage.getItem(", &serde_json::to_string(&key).unwrap_or_default(), ")||'')"].concat();
     js_sys::eval(&js).ok().and_then(|v| v.as_string()).unwrap_or_default()
 }
+/// Reads the same localStorage key the header's wallet-connect button writes
+/// to, so this page can tell whether a wallet is already connected without
+/// needing shared Dioxus state between header.rs and contract.rs.
+fn wallet_is_connected() -> bool {
+    js_sys::eval("!!localStorage.getItem('wallet_address')")
+        .ok().and_then(|v| v.as_bool()).unwrap_or(false)
+}
 fn ls_clear_abi(address: &str) {
     let key = ["abi_", &address.to_lowercase()].concat();
     let js = ["localStorage.removeItem(", &serde_json::to_string(&key).unwrap_or_default(), ")"].concat();
@@ -544,7 +551,7 @@ pub fn ContractPage(address: String) -> Element {
     let mut fn_errors:  Signal<std::collections::HashMap<String, String>>      = use_signal(|| std::collections::HashMap::new());
     let mut transfers_page: Signal<u64> = use_signal(|| 0);
     let mut transfers_more_loading      = use_signal(|| false);
-
+    let mut wallet_connected            = use_signal(wallet_is_connected);
     let addr_clone = address.clone();
     use_effect(move || {
         let address = addr_clone.clone();
@@ -661,7 +668,7 @@ pub fn ContractPage(address: String) -> Element {
                 div { class: "tabs-row",
                     button { class: if *active_tab.read() == "overview"  { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("overview"),  "Overview" }
                     button { class: if *active_tab.read() == "read"      { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("read"),      "Read Contract" }
-                    button { class: if *active_tab.read() == "write"     { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("write"),     "Write Contract" }
+                    button { class: if *active_tab.read() == "write"     { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| { active_tab.set("write"); wallet_connected.set(wallet_is_connected()); },     "Write Contract" }
                     button { class: if *active_tab.read() == "transfers" { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("transfers"),
                         "Transfers"
                         span { class: "tab-count", "({transfers_total.read()})" }
@@ -875,8 +882,7 @@ pub fn ContractPage(address: String) -> Element {
                                 div { class: "info-note", style: "margin:16px 20px;",
                                     span { class: "info-note-icon", "ℹ" }
                                     div {
-                                        p { style: "margin-bottom:6px;", "No ABI uploaded for this contract." }
-                                        p { "Go to " strong { "Overview" } " and paste your ABI JSON, or visit " strong { "Bytecode" } " to load function signatures from 4byte.directory." }
+                                        p { "No ABI uploaded for this contract. Go to " strong { "Overview" } " and paste your ABI JSON to enable typed functions." }
                                     }
                                 }
                                 if !signatures.read().is_empty() {
@@ -899,9 +905,11 @@ pub fn ContractPage(address: String) -> Element {
                                 "Send transactions — wallet must be connected"
                             }
                         }
-                        div { class: "info-note", style: "margin:12px 20px;",
-                            span { class: "info-note-icon", "ℹ" }
-                            span { "Connect your wallet in the header before calling write functions." }
+                        if !*wallet_connected.read() {
+                            div { class: "info-note", style: "margin:12px 20px;",
+                                span { class: "info-note-icon", "ℹ" }
+                                span { "Connect your wallet in the header before calling write functions." }
+                            }
                         }
                         if !mismatched_functions.is_empty() {
                             div { style: "margin:12px 20px; padding:10px 12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.25); border-radius:6px; font-size:12px; color:#eab308;",
@@ -978,25 +986,8 @@ pub fn ContractPage(address: String) -> Element {
                     }
                 }
                 if *active_tab.read() == "bytecode" {
-                    div { class: "bytecode-unverified-banner",
-                        div { class: "bub-icon",
-                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
-                                path { d:"M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" }
-                                path { d:"M12 9v4m0 4h.01" }
-                            }
-                        }
-                        div { class: "bub-text",
-                            strong { "Source code not verified. " }
-                            "Signatures from "
-                            a { href: "https://www.4byte.directory", target: "_blank", class: "hash-cell", "4byte.directory" }
-                            ". Decompile: "
-                            a { href: format!("https://app.dedaub.com/decompile?md5={}", &contract.address), target: "_blank", class: "hash-cell", "Dedaub ↗" }
-                            " / "
-                            a { href: format!("https://ethervm.io/decompile?address={}&network=custom&rpc=https://rpc.telcoin.network", &contract.address), target: "_blank", class: "hash-cell", "EtherVM ↗" }
-                        }
-                    }
                     div { class: "detail-panel", style: "margin-bottom:16px;",
-                        div { class: "detail-panel-title", "Contract Interface (4byte.directory)" }
+                        div { class: "detail-panel-title", "Resolved Function Selectors" }
                         if *sigs_loading.read() {
                             div { class: "loading-wrapper", style: "padding:24px;",
                                 div { class: "spinner" }
