@@ -260,13 +260,6 @@ fn ls_load_abi(address: &str) -> String {
     let js = ["(localStorage.getItem(", &serde_json::to_string(&key).unwrap_or_default(), ")||'')"].concat();
     js_sys::eval(&js).ok().and_then(|v| v.as_string()).unwrap_or_default()
 }
-/// Reads the same localStorage key the header's wallet-connect button writes
-/// to, so this page can tell whether a wallet is already connected without
-/// needing shared Dioxus state between header.rs and contract.rs.
-fn wallet_is_connected() -> bool {
-    js_sys::eval("!!localStorage.getItem('wallet_address')")
-        .ok().and_then(|v| v.as_bool()).unwrap_or(false)
-}
 fn ls_clear_abi(address: &str) {
     let key = ["abi_", &address.to_lowercase()].concat();
     let js = ["localStorage.removeItem(", &serde_json::to_string(&key).unwrap_or_default(), ")"].concat();
@@ -551,7 +544,9 @@ pub fn ContractPage(address: String) -> Element {
     let mut fn_errors:  Signal<std::collections::HashMap<String, String>>      = use_signal(|| std::collections::HashMap::new());
     let mut transfers_page: Signal<u64> = use_signal(|| 0);
     let mut transfers_more_loading      = use_signal(|| false);
-    let mut wallet_connected            = use_signal(wallet_is_connected);
+    // Shared wallet-connection state from main.rs's context provider --
+    // fully reactive, no localStorage polling or tab-switch re-check needed.
+    let wallet_connected: Signal<Option<String>> = use_context();
     let addr_clone = address.clone();
     use_effect(move || {
         let address = addr_clone.clone();
@@ -668,7 +663,7 @@ pub fn ContractPage(address: String) -> Element {
                 div { class: "tabs-row",
                     button { class: if *active_tab.read() == "overview"  { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("overview"),  "Overview" }
                     button { class: if *active_tab.read() == "read"      { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("read"),      "Read Contract" }
-                    button { class: if *active_tab.read() == "write"     { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| { active_tab.set("write"); wallet_connected.set(wallet_is_connected()); },     "Write Contract" }
+                    button { class: if *active_tab.read() == "write"     { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("write"),     "Write Contract" }
                     button { class: if *active_tab.read() == "transfers" { "tab-btn tab-active" } else { "tab-btn" }, onclick: move |_| active_tab.set("transfers"),
                         "Transfers"
                         span { class: "tab-count", "({transfers_total.read()})" }
@@ -905,7 +900,7 @@ pub fn ContractPage(address: String) -> Element {
                                 "Send transactions — wallet must be connected"
                             }
                         }
-                        if !*wallet_connected.read() {
+                        if wallet_connected.read().is_none() {
                             div { class: "info-note", style: "margin:12px 20px;",
                                 span { class: "info-note-icon", "ℹ" }
                                 span { "Connect your wallet in the header before calling write functions." }

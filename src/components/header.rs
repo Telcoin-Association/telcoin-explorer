@@ -21,7 +21,7 @@ fn ls_remove(key: &str) {
 
 #[component]
 pub fn Header() -> Element {
-    let mut wallet_address: Signal<Option<String>> = use_signal(|| None);
+    let mut wallet_address: Signal<Option<String>> = use_context();
     let mut wallet_error: Signal<Option<String>>   = use_signal(|| None);
     let mut menu_open                              = use_signal(|| false);
 

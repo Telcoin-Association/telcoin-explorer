@@ -17,6 +17,9 @@ fn main() {
 
 #[component]
 fn App() -> Element {
+    // Shared wallet-connection state, readable from any page (header owns
+    // writing to it; contract.rs and others just read it reactively).
+    use_context_provider(|| Signal::new(None::<String>));
     rsx! {
         Router::<Route> {}
     }
