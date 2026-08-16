@@ -781,7 +781,31 @@ input  { font-family: inherit; }
   .detail-row { grid-template-columns: 90px 1fr; }
   .detail-key, .detail-val { padding: 10px 12px; font-size: 12px; }
   .btx-header { display: none; }
-  .btx-row { grid-template-columns: 1fr; padding: 10px 14px; gap: 3px; }
+  /* 2-column layout instead of fully stacked -- Tx Hash gets its own full
+     width line (it's the longest field), but From/To and Amount/Block are
+     each short enough to sit side by side, using the available width
+     instead of wasting a full line per field. */
+  .btx-row { grid-template-columns: 1fr 1fr; padding: 10px 14px; gap: 8px 12px; }
+  .btx-col-hash  { grid-column: 1 / -1; }
+  .btx-col-from  { grid-column: 1; }
+  .btx-col-to    { grid-column: 2; }
+  .btx-col-value { grid-column: 1; }
+  .btx-col-fee   { grid-column: 2; }
+  /* No header row visible on mobile (.btx-header is hidden), so each
+     stacked field needs its own inline label -- otherwise 5 unlabeled
+     left-aligned lines per transfer just look like an unreadable jumble,
+     even though the stacking itself is working correctly. */
+  .btx-row { border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 4px; }
+  .btx-col-hash::before  { content: "Tx Hash"; }
+  .btx-col-from::before  { content: "From"; }
+  .btx-col-to::before    { content: "To"; }
+  .btx-col-value::before { content: "Amount"; }
+  .btx-col-fee::before   { content: "Block"; }
+  .btx-col-hash::before, .btx-col-from::before, .btx-col-to::before,
+  .btx-col-value::before, .btx-col-fee::before {
+    display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 1px;
+  }
   /* .tx-table (address/transactions/contract-transfers) has no per-context
      column-hiding since it's shared across tables with different column
      counts -- instead give it a floor width so cells never get crushed to
