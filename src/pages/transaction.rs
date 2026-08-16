@@ -3,8 +3,8 @@ use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     get_tx_receipt_status, get_transaction, get_token_transfers_for_tx, get_block_by_number,
-    Transaction, TokenTransfer, format_wei_exact, format_amount, shorten_hash, shorten_addr,
-    unix_to_age, unix_to_datetime};
+    Transaction, TokenTransfer, format_wei_exact, shorten_hash, shorten_addr,
+    unix_to_age, unix_to_datetime, format_transfer_amount, is_native_tel_transfer};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
@@ -139,9 +139,13 @@ pub fn TransactionPage(hash: String) -> Element {
                                     div { class: "detail-val", style: "flex-direction:column; align-items:flex-start; gap:6px;",
                                         for transfer in token_transfers.read().iter() {
                                             div { style: "display:flex; align-items:center; gap:8px; flex-wrap:wrap;",
-                                                Link { to: Route::TokenPage { address: transfer.token_address.clone() },
-                                                    span { class: "chip info", style: "font-size:11px;",
-                                                        if !transfer.token_symbol.is_empty() { "{transfer.token_symbol}" } else { "{shorten_addr(&transfer.token_address)}" }
+                                                if is_native_tel_transfer(&transfer.token_address) {
+                                                    span { class: "chip success", style: "font-size:11px;", "TEL" }
+                                                } else {
+                                                    Link { to: Route::TokenPage { address: transfer.token_address.clone() },
+                                                        span { class: "chip info", style: "font-size:11px;",
+                                                            if !transfer.token_symbol.is_empty() { "{transfer.token_symbol}" } else { "{shorten_addr(&transfer.token_address)}" }
+                                                        }
                                                     }
                                                 }
                                                 Link { to: Route::AddressPage { address: transfer.from.clone() },
@@ -152,7 +156,7 @@ pub fn TransactionPage(hash: String) -> Element {
                                                     span { class: "hash-cell", "{shorten_addr(&transfer.to)}" }
                                                 }
                                                 span { style: "color:var(--accent-green); font-weight:600;",
-                                                    { format!("{} {}", format_amount(transfer.amount), transfer.token_symbol) }
+                                                    { format_transfer_amount(transfer) }
                                                 }
                                             }
                                         }

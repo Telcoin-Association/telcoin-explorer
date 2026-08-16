@@ -13,6 +13,18 @@ pub const CHAIN_ID:                 u64  = 2017;
 pub const NATIVE_TOKEN:             &str = "TEL";
 pub const CONSENSUS_REGISTRY:       &str = "0x07e17e17e17e17e17e17e17e17e17e17e17e17e1";
 pub const VALIDATOR_STAKE_REQUIRED: &str = "1,000,000";
+/// Sentinel token_address the indexer uses to represent native TEL inside a
+/// Transfer-shaped record. TEL is the native gas token with no real ERC-20
+/// contract (same reason the TokenRegistry uses WTEL to represent it), so
+/// events like faucet claims -- minted as a "Transfer" from the zero address
+/// for consistency with the rest of the transfer-history API -- carry this
+/// placeholder address instead of a real one. token_symbol is null and
+/// amount is the raw un-adjusted wei value for these records; both need
+/// special-casing wherever a TokenTransfer is displayed.
+pub const NATIVE_TEL_TRANSFER_MARKER: &str = "0x00000000000000000000000000000000000007e1";
+pub fn is_native_tel_transfer(token_address: &str) -> bool {
+    token_address.to_lowercase() == NATIVE_TEL_TRANSFER_MARKER
+}
 /// The canonical TokenRegistry proxy — survives upgrades, the only address worth hardcoding.
 pub const TOKEN_REGISTRY: &str = "0x96C48BA24D2b48b3bd4a703a3Fc7095E7770d92C";
 /// Stateless, replaceable read helper for the registry — front ends talk to this.
@@ -347,6 +359,27 @@ fn add_thousands_separators(s: &str) -> String {
         out.push(*b as char);
     }
     out
+}
+/// Human-readable "amount SYMBOL" for a token transfer, correctly handling
+/// the native-TEL sentinel address (see NATIVE_TEL_TRANSFER_MARKER) -- shows
+/// "N TEL" using exact wei math instead of the raw un-adjusted integer with
+/// no symbol that `amount`/`token_symbol` would otherwise produce.
+pub fn format_transfer_amount(t: &TokenTransfer) -> String {
+    if is_native_tel_transfer(&t.token_address) {
+        format!("{} TEL", format_wei_exact(t.value))
+    } else {
+        format!("{} {}", format_amount(t.amount), t.token_symbol)
+    }
+}
+/// Numeric-only amount (no symbol) for a token transfer -- for CSV export,
+/// where the symbol has its own column and shouldn't be embedded in the
+/// amount field. Same native-TEL special-casing as format_transfer_amount.
+pub fn transfer_amount_raw_str(t: &TokenTransfer) -> String {
+    if is_native_tel_transfer(&t.token_address) {
+        format_wei_exact(t.value)
+    } else {
+        format_amount(t.amount)
+    }
 }
 pub fn format_gas(gas: u64) -> String {
     if gas >= 1_000_000 { format!("{:.2}M", gas as f64 / 1_000_000.0) }

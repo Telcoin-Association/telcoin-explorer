@@ -4,7 +4,8 @@ use crate::router::Route;
 use crate::services::rpc::{
     resolve_selectors, FunctionSignature,
     get_contract_info, get_address_transfers, contract_call, ContractInfo,
-    TokenTransfer, shorten_hash, shorten_addr, unix_to_age, format_wei_exact, format_amount, format_token_amount,
+    TokenTransfer, shorten_hash, shorten_addr, unix_to_age, format_wei_exact, format_token_amount,
+    format_transfer_amount,
     CONSENSUS_REGISTRY, INDEXER_URL,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
@@ -961,7 +962,7 @@ pub fn ContractPage(address: String) -> Element {
                                                 td { "data-label": "From", Link { to: Route::AddressPage { address: t.from.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.from)}" } } }
                                                 td { class: "td-arrow", span { class: "transfer-arrow", "→" } }
                                                 td { "data-label": "To", Link { to: Route::AddressPage { address: t.to.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.to)}" } } }
-                                                td { "data-label": "Amount", style: "color:var(--accent-green); font-weight:600;", { format!("{} {}", format_amount(t.amount), t.token_symbol) } }
+                                                td { "data-label": "Amount", style: "color:var(--accent-green); font-weight:600;", { format_transfer_amount(t) } }
                                             }
                                         }
                                     }

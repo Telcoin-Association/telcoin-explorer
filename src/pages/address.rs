@@ -4,7 +4,8 @@ use crate::router::Route;
 use crate::services::rpc::{
     is_contract,
     get_balance_wei, get_tx_count, get_address_txs, get_address_transfers,
-    TokenTransfer, Transaction, shorten_hash, shorten_addr, format_wei_exact, format_amount,
+    TokenTransfer, Transaction, shorten_hash, shorten_addr, format_wei_exact,
+    format_transfer_amount, transfer_amount_raw_str, is_native_tel_transfer,
     CONSENSUS_REGISTRY,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
@@ -69,8 +70,8 @@ fn transfers_to_csv(transfers: &[TokenTransfer]) -> String {
             csv_escape(&t.from),
             csv_escape(&t.to),
             csv_escape(&t.token_address),
-            csv_escape(&t.token_symbol),
-            format_amount(t.amount),
+            csv_escape(if is_native_tel_transfer(&t.token_address) { "TEL" } else { &t.token_symbol }),
+            transfer_amount_raw_str(t),
         ));
     }
     out
@@ -460,7 +461,9 @@ pub fn AddressPage(address: String) -> Element {
                                                     }
                                                 }
                                                 td { "data-label": "Token",
-                                                    if !transfer.token_symbol.is_empty() {
+                                                    if is_native_tel_transfer(&transfer.token_address) {
+                                                        span { class: "chip success", style: "font-size:11px;", "TEL" }
+                                                    } else if !transfer.token_symbol.is_empty() {
                                                         Link { to: Route::AddressPage { address: transfer.token_address.clone() },
                                                             span { class: "chip info", style: "font-size:11px;", "{transfer.token_symbol}" }
                                                         }
@@ -471,7 +474,7 @@ pub fn AddressPage(address: String) -> Element {
                                                     }
                                                 }
                                                 td { "data-label": "Amount", style: "color:var(--accent-green); font-weight:600; font-family:var(--font-mono); font-size:12px;",
-                                                    { format_amount(transfer.amount) }
+                                                    { format_transfer_amount(transfer) }
                                                 }
                                             }
                                         }
