@@ -774,6 +774,13 @@ input  { font-family: inherit; }
   .detail-key, .detail-val { padding: 10px 12px; font-size: 12px; }
   .btx-header { display: none; }
   .btx-row { grid-template-columns: 1fr; padding: 10px 14px; gap: 3px; }
+  /* .tx-table (address/transactions/contract-transfers) has no per-context
+     column-hiding since it's shared across tables with different column
+     counts -- instead give it a floor width so cells never get crushed to
+     near-zero, and let .table-wrapper's overflow-x:auto scroll it cleanly. */
+  .table-wrapper { -webkit-overflow-scrolling: touch; }
+  .tx-table { min-width: 640px; }
+  .tx-table th, .tx-table td { padding: 9px 10px; font-size: 12px; }
 
   /* Validators */
   .validator-info-grid { grid-template-columns: 1fr 1fr; }

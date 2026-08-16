@@ -2,8 +2,8 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_token_info, get_token_transfers_page,
-    TokenInfo, TokenTransfer,
+    get_token_info, get_token_transfers_page, get_registered_token,
+    TokenInfo, TokenTransfer, RegisteredToken,
     shorten_hash, shorten_addr, format_amount,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
@@ -16,6 +16,7 @@ pub fn TokenPage(address: String) -> Element {
     let mut loading  = use_signal(|| true);
     let error: Signal<Option<String>>             = use_signal(|| None);
     let mut not_token = use_signal(|| false);
+    let mut registry_entry: Signal<Option<RegisteredToken>> = use_signal(|| None);
     let mut transfers_page: Signal<u64> = use_signal(|| 0);
     let mut more_loading = use_signal(|| false);
 
@@ -24,7 +25,12 @@ pub fn TokenPage(address: String) -> Element {
         let address = addr_clone.clone();
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
-            match get_token_info(&address).await {
+            let (info_res, registry_res) = futures::join!(
+                get_token_info(&address),
+                get_registered_token(&address),
+            );
+            registry_entry.set(registry_res);
+            match info_res {
                 Some(info) => {
                     token.set(Some(info));
                     // Full transfer history — indexed by token contract, no block-range limit.
@@ -75,8 +81,12 @@ pub fn TokenPage(address: String) -> Element {
                 // Header
                 div { class: "token-page-header",
                     div { class: "token-icon-wrap",
-                        span { class: "token-icon-letter",
-                            { t.symbol.chars().next().unwrap_or('T').to_string() }
+                        if let Some(logo) = registry_entry.read().as_ref().map(|r| r.logo_uri.clone()).filter(|l| !l.is_empty()) {
+                            img { src: "{logo}", alt: "{t.symbol}", style: "width:100%; height:100%; border-radius:50%; object-fit:cover;" }
+                        } else {
+                            span { class: "token-icon-letter",
+                                { t.symbol.chars().next().unwrap_or('T').to_string() }
+                            }
                         }
                     }
                     div {
@@ -121,6 +131,15 @@ pub fn TokenPage(address: String) -> Element {
                             div { class: "detail-key", "Token Standard" }
                             div { class: "detail-val",
                                 span { class: "chip info", "ERC-20" }
+                            }
+                        }
+                        if let Some(website) = registry_entry.read().as_ref().map(|r| r.website.clone()).filter(|w| !w.is_empty()) {
+                            div { class: "detail-row",
+                                div { class: "detail-key", "Website" }
+                                div { class: "detail-val",
+                                    a { href: "{website}", target: "_blank", rel: "noopener noreferrer nofollow", class: "action-link", "{website} ↗" }
+                                    span { style: "font-size:11px; color:var(--text-muted); margin-left:8px;", "(self-reported, unverified)" }
+                                }
                             }
                         }
                     }

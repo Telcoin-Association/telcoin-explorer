@@ -336,13 +336,36 @@ fn run_mobile_search()  { run_search_for("mobile-search"); }
 /// search has no dedicated button element (icon button sits next to the
 /// input), so this just disables/dims the input itself.
 fn set_header_search_loading(id: &str, loading: bool) {
+    // The search button is always the input's next DOM sibling in both the
+    // desktop (.header-search-box) and mobile (.mobile-menu-search) search
+    // boxes, so this works for either id without separate selectors.
     let js = if loading {
         format!(
-            "var inp=document.getElementById('{id}'); if(inp){{ inp.disabled=true; inp.style.opacity='0.6'; inp.style.cursor='wait'; }}"
+            "(function(){{
+                var inp=document.getElementById('{id}');
+                if(!inp) return;
+                inp.disabled=true; inp.style.opacity='0.6'; inp.style.cursor='wait';
+                var btn=inp.nextElementSibling;
+                if(btn && !btn.dataset.origHtml){{
+                    btn.dataset.origHtml=btn.innerHTML;
+                    btn.innerHTML='<div class=\"spinner\" style=\"width:14px;height:14px;border-width:2px;margin:0;\"></div>';
+                    btn.disabled=true; btn.style.cursor='wait';
+                }}
+            }})()"
         )
     } else {
         format!(
-            "var inp=document.getElementById('{id}'); if(inp){{ inp.disabled=false; inp.style.opacity=''; inp.style.cursor=''; }}"
+            "(function(){{
+                var inp=document.getElementById('{id}');
+                if(!inp) return;
+                inp.disabled=false; inp.style.opacity=''; inp.style.cursor='';
+                var btn=inp.nextElementSibling;
+                if(btn && btn.dataset.origHtml){{
+                    btn.innerHTML=btn.dataset.origHtml;
+                    delete btn.dataset.origHtml;
+                    btn.disabled=false; btn.style.cursor='';
+                }}
+            }})()"
         )
     };
     let _ = js_sys::eval(&js);
@@ -376,9 +399,29 @@ fn run_search_for(id: &str) {
         } else if q.chars().all(|c| c.is_ascii_digit()) {
             window.location().set_href(&format!("/block/{}", q)).ok();
         } else {
-            let _ = js_sys::eval(&format!(
-                "var el=document.getElementById('{}');if(el){{el.style.borderColor='#ef4444';setTimeout(function(){{el.style.borderColor='';}},2000);}}", id
-            ));
+            // Not an address/hash/block number — check the on-chain TokenRegistry
+            // for a symbol or name match (e.g. "eUSD", "WTEL") before giving up.
+            // Same fallback as home.rs's search box, so the header search box
+            // (visible on every non-home page) behaves consistently.
+            set_header_search_loading(id, true);
+            let query = q.clone();
+            let id_owned = id.to_string();
+            wasm_bindgen_futures::spawn_local(async move {
+                use crate::services::rpc::get_registered_tokens;
+                let tokens = get_registered_tokens().await;
+                let q_lower = query.to_lowercase();
+                let found = tokens.iter().find(|t| {
+                    t.symbol.to_lowercase() == q_lower || t.name.to_lowercase() == q_lower
+                });
+                if let Some(token) = found {
+                    window2.location().set_href(&format!("/token/{}", token.address)).ok();
+                } else {
+                    set_header_search_loading(&id_owned, false);
+                    let _ = js_sys::eval(&format!(
+                        "var el=document.getElementById('{}');if(el){{el.style.borderColor='#ef4444';setTimeout(function(){{el.style.borderColor='';}},2000);}}", id_owned
+                    ));
+                }
+            });
         }
     }
 }

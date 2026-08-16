@@ -90,14 +90,20 @@ pub struct TokenInfo {
     pub total_supply: String,
 }
 /// One token from the on-chain TokenRegistry (via the Lens contract) — not
-/// hardcoded; the list is resolved live from `getAllListedTokens()` so new
-/// registrations show up automatically without a TelScan deploy.
+/// hardcoded; the list is resolved live from a single `getAllRecords()` call
+/// so new registrations (and logo/website updates) show up automatically
+/// without a TelScan deploy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisteredToken {
-    pub address:  String,
-    pub name:     String,
-    pub symbol:   String,
-    pub decimals: u8,
+    pub address:   String,
+    pub name:      String,
+    pub symbol:    String,
+    pub decimals:  u8,
+    /// Self-attested by the listing holder, never verified on-chain — treat
+    /// as a display hint, sanitize before rendering, never auto-follow.
+    pub website:   String,
+    /// Self-attested logo URL; empty string if unset.
+    pub logo_uri:  String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractInfo {
@@ -686,45 +692,85 @@ pub async fn get_token_transfers_for_tx(tx_hash: &str, participant: &str, block_
 // ── Token Registry ─────────────────────────────────────────────────────────────
 /// Decode a plain ABI-encoded `address[]` return (standard dynamic array:
 /// offset word, length word, then N right-aligned 32-byte address words).
-fn decode_address_array(hex: &str) -> Vec<String> {
+fn word_at(raw: &str, hex_offset: usize) -> &str {
+    raw.get(hex_offset..hex_offset + 64).unwrap_or("")
+}
+fn word_to_usize(word: &str) -> usize {
+    let trimmed = word.trim_start_matches('0');
+    if trimmed.is_empty() { 0 } else { usize::from_str_radix(trimmed, 16).unwrap_or(0) }
+}
+fn word_to_address(word: &str) -> String {
+    if word.len() < 40 { return String::new(); }
+    format!("0x{}", &word[word.len() - 40..])
+}
+fn word_to_u8(word: &str) -> u8 {
+    if word.len() < 2 { return 0; }
+    u8::from_str_radix(&word[word.len() - 2..], 16).unwrap_or(0)
+}
+/// Decode an ABI `string` whose length word starts at the given HEX-CHARACTER
+/// offset (length word, then the UTF-8 bytes right after it).
+fn decode_string_at(raw: &str, abs_hex_offset: usize) -> String {
+    let len = word_to_usize(word_at(raw, abs_hex_offset));
+    let data_start = abs_hex_offset + 64;
+    let data_hex = raw.get(data_start..data_start + len * 2).unwrap_or("");
+    let bytes: Vec<u8> = (0..data_hex.len()).step_by(2)
+        .filter_map(|i| u8::from_str_radix(&data_hex[i..i + 2], 16).ok())
+        .collect();
+    String::from_utf8(bytes).unwrap_or_default()
+}
+/// Decode `getAllRecords()`'s return: `TokenRecord[]` where each record is
+/// (address token, uint8 decimals, uint8 status, uint40 listedAt,
+/// uint40 updatedAt, uint8 flags, string name, string symbol, string website,
+/// string logoURI). Six static head words then four dynamic-string offset
+/// words (10 words / 640 hex chars of head per tuple), tails holding the
+/// four strings in order.
+fn decode_token_records(hex: &str) -> Vec<RegisteredToken> {
     let raw = hex.trim_start_matches("0x");
     if raw.len() < 128 { return vec![]; }
-    let offset_words = usize::from_str_radix(&raw[0..64], 16).unwrap_or(0);
-    let start = offset_words * 2; // word offset -> hex char offset
-    if raw.len() < start + 64 { return vec![]; }
-    let len = usize::from_str_radix(&raw[start..start + 64], 16).unwrap_or(0);
-    let mut out = Vec::with_capacity(len);
-    for i in 0..len {
-        let word_start = start + 64 + i * 64;
-        if raw.len() < word_start + 64 { break; }
-        let word = &raw[word_start..word_start + 64];
-        out.push(format!("0x{}", &word[24..])); // last 20 bytes = 40 hex chars
+    let array_data_start = word_to_usize(word_at(raw, 0)) * 2;
+    if raw.len() < array_data_start + 64 { return vec![]; }
+    let count = word_to_usize(word_at(raw, array_data_start));
+    let elements_start = array_data_start + 64;
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let offset_word_pos = elements_start + i * 64;
+        if raw.len() < offset_word_pos + 64 { break; }
+        let rel_offset = word_to_usize(word_at(raw, offset_word_pos));
+        let elem_start = elements_start + rel_offset * 2;
+        if raw.len() < elem_start + 10 * 64 { continue; }
+        let token = word_to_address(word_at(raw, elem_start));
+        let decimals = word_to_u8(word_at(raw, elem_start + 64));
+        let name_off    = word_to_usize(word_at(raw, elem_start + 384));
+        let symbol_off  = word_to_usize(word_at(raw, elem_start + 448));
+        let website_off = word_to_usize(word_at(raw, elem_start + 512));
+        let logo_off    = word_to_usize(word_at(raw, elem_start + 576));
+        out.push(RegisteredToken {
+            address:  token,
+            name:     decode_string_at(raw, elem_start + name_off * 2),
+            symbol:   decode_string_at(raw, elem_start + symbol_off * 2),
+            decimals,
+            website:  decode_string_at(raw, elem_start + website_off * 2),
+            logo_uri: decode_string_at(raw, elem_start + logo_off * 2),
+        });
     }
     out
 }
-/// Full list of tokens listed in the on-chain TokenRegistry: resolved live via
-/// the Lens's `getAllListedTokens()` (selector 0xa50d9983 — a plain
-/// `address[]`, cheap to decode), then metadata for each is filled in through
-/// the indexer's cached `/tokens/:addr`. No hardcoded token list — new
-/// registrations show up automatically, nothing to redeploy.
+/// Full list of tokens listed in the on-chain TokenRegistry: resolved live in
+/// ONE call to the Lens's getAllRecords() (selector 0xa7f9fe72), including
+/// name/symbol/decimals/website/logo. No hardcoded token list, no per-token
+/// round trips -- new registrations (and logo/website edits) show up
+/// automatically, nothing to redeploy.
 pub async fn get_registered_tokens() -> Vec<RegisteredToken> {
-    let resp = match contract_call(TOKEN_REGISTRY_LENS, "0xa50d9983").await {
+    let resp = match contract_call(TOKEN_REGISTRY_LENS, "0xa7f9fe72").await {
         Ok(r) if r.ok => r,
         _ => return vec![],
     };
-    let hex = resp.result.unwrap_or_default();
-    let addrs = decode_address_array(&hex);
-    let futures: Vec<_> = addrs.iter().map(|a| get_token_info(a)).collect();
-    let results = futures::future::join_all(futures).await;
-    addrs.into_iter().zip(results.into_iter())
-        .filter_map(|(address, info)| {
-            let info = info?;
-            Some(RegisteredToken {
-                address,
-                name: info.name,
-                symbol: info.symbol,
-                decimals: info.decimals,
-            })
-        })
-        .collect()
+    decode_token_records(&resp.result.unwrap_or_default())
+}
+/// One registry entry by address, if listed -- for the individual token page
+/// (logo/website), rather than the search-only bulk list.
+pub async fn get_registered_token(address: &str) -> Option<RegisteredToken> {
+    let addr_lower = address.to_lowercase();
+    get_registered_tokens().await.into_iter()
+        .find(|t| t.address.to_lowercase() == addr_lower)
 }
