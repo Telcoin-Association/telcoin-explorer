@@ -518,6 +518,14 @@ input  { font-family: inherit; }
 .btx-row:last-child { border-bottom: none; }
 .btx-row:hover { background: var(--tel-blue-dim); }
 .btx-col-hash { display: flex; align-items: center; gap: 6px; }
+/* Grid items default to min-width:auto, not 0 -- long unbreakable content
+   (hashes/addresses) can force the row wider than the viewport instead of
+   shrinking to fit, and with body's overflow-x:hidden that excess gets
+   clipped off-screen rather than scrolled to, looking like everything is
+   "bunched up" on the left. Also give the table itself a scroll escape
+   hatch as a safety net, matching .table-wrapper used elsewhere. */
+.btx-col-hash, .btx-col-from, .btx-col-to, .btx-col-value, .btx-col-fee { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.block-tx-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .btx-status { font-size: 11px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
 .btx-status.success { background: rgba(34,197,94,0.12); color: var(--accent-green); }
 .btx-status.failed  { background: rgba(239,68,68,0.12); color: #ef4444; }
