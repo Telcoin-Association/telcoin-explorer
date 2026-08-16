@@ -319,19 +319,19 @@ pub fn AddressPage(address: String) -> Element {
                                     tbody {
                                         for tx in native_txs.read().iter() {
                                             tr {
-                                                td {
+                                                td { "data-label": "Tx Hash",
                                                     Link { to: Route::TransactionPage { hash: tx.hash.clone() },
                                                         span { class: "hash-cell", "{shorten_hash(&tx.hash)}" }
                                                     }
                                                 }
-                                                td {
+                                                td { "data-label": "Block",
                                                     if let Some(bn) = tx.block_number {
                                                         Link { to: Route::BlockPage { block_number: bn },
                                                             span { class: "hash-cell", "#{bn}" }
                                                         }
                                                     }
                                                 }
-                                                td {
+                                                td { "data-label": "From",
                                                     if tx.from.to_lowercase() == address.to_lowercase() {
                                                         span { class: "chip info", style: "font-size:10px;", "Self" }
                                                     } else {
@@ -340,8 +340,8 @@ pub fn AddressPage(address: String) -> Element {
                                                         }
                                                     }
                                                 }
-                                                td { span { class: "transfer-arrow", "→" } }
-                                                td {
+                                                td { class: "td-arrow", span { class: "transfer-arrow", "→" } }
+                                                td { "data-label": "To",
                                                     if let Some(ref to) = tx.to {
                                                         if to.to_lowercase() == address.to_lowercase() {
                                                             span { class: "chip success", style: "font-size:10px;", "Self" }
@@ -354,7 +354,7 @@ pub fn AddressPage(address: String) -> Element {
                                                         span { class: "method-badge method-unknown", "Create" }
                                                     }
                                                 }
-                                                td { style: "font-family:var(--font-mono); font-size:12px;",
+                                                td { "data-label": "Value", style: "font-family:var(--font-mono); font-size:12px;",
                                                     if tx.value > 0 {
                                                         span { style: "color:var(--accent-green);",
                                                             { format!("{} TEL", format_wei_exact(tx.value)) }
@@ -363,13 +363,13 @@ pub fn AddressPage(address: String) -> Element {
                                                         span { class: "td-faint", "—" }
                                                     }
                                                 }
-                                                td { style: "font-family:var(--font-mono); font-size:11px; color:var(--text-muted);",
+                                                td { "data-label": "Fee", style: "font-family:var(--font-mono); font-size:11px; color:var(--text-muted);",
                                                     {
                                                         let fee_wei = tx.gas_used as u128 * tx.gas_price as u128;
                                                         if fee_wei > 0 { format_wei_exact(fee_wei) } else { "—".to_string() }
                                                     }
                                                 }
-                                                td {
+                                                td { "data-label": "Status",
                                                     if tx.status == Some(true) {
                                                         span { class: "chip success", style: "font-size:10px;", "✓" }
                                                     } else if tx.status == Some(false) {
@@ -438,28 +438,28 @@ pub fn AddressPage(address: String) -> Element {
                                     tbody {
                                         for transfer in transfers.read().iter() {
                                             tr {
-                                                td {
+                                                td { "data-label": "Tx Hash",
                                                     Link { to: Route::TransactionPage { hash: transfer.tx_hash.clone() },
                                                         span { class: "hash-cell", "{shorten_hash(&transfer.tx_hash)}" }
                                                     }
                                                 }
-                                                td {
+                                                td { "data-label": "Block",
                                                     Link { to: Route::BlockPage { block_number: transfer.block_number },
                                                         span { class: "hash-cell", "#{transfer.block_number}" }
                                                     }
                                                 }
-                                                td {
+                                                td { "data-label": "From",
                                                     Link { to: Route::AddressPage { address: transfer.from.clone() },
                                                         span { class: "hash-cell addr-short", "{shorten_addr(&transfer.from)}" }
                                                     }
                                                 }
-                                                td { span { class: "transfer-arrow", "→" } }
-                                                td {
+                                                td { class: "td-arrow", span { class: "transfer-arrow", "→" } }
+                                                td { "data-label": "To",
                                                     Link { to: Route::AddressPage { address: transfer.to.clone() },
                                                         span { class: "hash-cell addr-short", "{shorten_addr(&transfer.to)}" }
                                                     }
                                                 }
-                                                td {
+                                                td { "data-label": "Token",
                                                     if !transfer.token_symbol.is_empty() {
                                                         Link { to: Route::AddressPage { address: transfer.token_address.clone() },
                                                             span { class: "chip info", style: "font-size:11px;", "{transfer.token_symbol}" }
@@ -470,7 +470,7 @@ pub fn AddressPage(address: String) -> Element {
                                                         }
                                                     }
                                                 }
-                                                td { style: "color:var(--accent-green); font-weight:600; font-family:var(--font-mono); font-size:12px;",
+                                                td { "data-label": "Amount", style: "color:var(--accent-green); font-weight:600; font-family:var(--font-mono); font-size:12px;",
                                                     { format_amount(transfer.amount) }
                                                 }
                                             }

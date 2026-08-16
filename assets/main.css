@@ -543,7 +543,7 @@ input  { font-family: inherit; }
 .address-type-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .address-hash-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .address-hash-text { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); word-break: break-all; }
-.address-balance-big { font-size: 28px; font-weight: 800; color: var(--text-primary); margin: 8px 0 4px; line-height: 1.1; }
+.address-balance-big { font-size: 28px; font-weight: 800; color: var(--text-primary); margin: 8px 0 4px; line-height: 1.1; overflow-wrap: break-word; word-break: break-word; }
 .address-balance-big span { font-size: 16px; font-weight: 500; color: var(--text-muted); margin-left: 6px; }
 .address-meta { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
 .address-meta-val { color: var(--text-primary); font-weight: 600; }
@@ -754,6 +754,7 @@ input  { font-family: inherit; }
 @media (max-width: 768px) {
   :root { --PAD: 16px; }
   .header-inner { height: 54px; gap: 12px; }
+  .address-balance-big { font-size: 20px; }
   .logo-badge { display: none; }
   .desktop-nav { display: none; }
   .header-search-box { display: none; }
@@ -823,9 +824,29 @@ input  { font-family: inherit; }
      column-hiding since it's shared across tables with different column
      counts -- instead give it a floor width so cells never get crushed to
      near-zero, and let .table-wrapper's overflow-x:auto scroll it cleanly. */
-  .table-wrapper { -webkit-overflow-scrolling: touch; }
-  .tx-table { min-width: 640px; }
-  .tx-table th, .tx-table td { padding: 9px 10px; font-size: 12px; }
+  /* Generic responsive-table pattern for every .tx-table usage (address
+     Transactions/Transfers tabs, transactions list, contract Transfers tab)
+     -- each page's columns differ, so this reads the label from a
+     data-label attribute on the <td> rather than a hardcoded ::before per
+     page. Cells with no meaningful mobile label (the from->to arrow column)
+     carry class="td-arrow" instead of data-label and are hidden outright. */
+  .table-wrapper { overflow-x: visible; }
+  .tx-table { min-width: 0; width: 100%; }
+  .tx-table thead { display: none; }
+  .tx-table, .tx-table tbody { display: block; width: 100%; }
+  /* 2-column auto-flow -- works for any column count/order per page (7-8
+     cols across address/transactions/contract tables) with no per-cell grid
+     placement needed: the hidden arrow cell drops out of the flow, and
+     whatever's left just pairs up 2-per-row left to right. */
+  .tx-table tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border-bottom: 2px solid var(--border); padding: 10px 0; }
+  .tx-table tr:last-child { border-bottom: none; }
+  .tx-table td { display: block; padding: 0 4px; font-size: 13px; border-bottom: none; }
+  .tx-table td.td-arrow { display: none; }
+  .tx-table td[data-label]::before {
+    content: attr(data-label);
+    display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 1px;
+  }
 
   /* Validators */
   .validator-info-grid { grid-template-columns: 1fr 1fr; }

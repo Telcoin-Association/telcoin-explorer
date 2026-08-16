@@ -955,13 +955,13 @@ pub fn ContractPage(address: String) -> Element {
                                     tbody {
                                         for t in transfers.read().iter() {
                                             tr {
-                                                td { Link { to: Route::TransactionPage { hash: t.tx_hash.clone() }, span { class: "hash-cell", "{shorten_hash(&t.tx_hash)}" } } }
-                                                td { Link { to: Route::BlockPage { block_number: t.block_number }, span { class: "hash-cell", "#{t.block_number}" } } }
-                                                td { style: "color:var(--text-muted);", "{unix_to_age(t.timestamp)}" }
-                                                td { Link { to: Route::AddressPage { address: t.from.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.from)}" } } }
-                                                td { span { class: "transfer-arrow", "→" } }
-                                                td { Link { to: Route::AddressPage { address: t.to.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.to)}" } } }
-                                                td { style: "color:var(--accent-green); font-weight:600;", { format!("{} {}", format_amount(t.amount), t.token_symbol) } }
+                                                td { "data-label": "Tx Hash", Link { to: Route::TransactionPage { hash: t.tx_hash.clone() }, span { class: "hash-cell", "{shorten_hash(&t.tx_hash)}" } } }
+                                                td { "data-label": "Block", Link { to: Route::BlockPage { block_number: t.block_number }, span { class: "hash-cell", "#{t.block_number}" } } }
+                                                td { "data-label": "Age", style: "color:var(--text-muted);", "{unix_to_age(t.timestamp)}" }
+                                                td { "data-label": "From", Link { to: Route::AddressPage { address: t.from.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.from)}" } } }
+                                                td { class: "td-arrow", span { class: "transfer-arrow", "→" } }
+                                                td { "data-label": "To", Link { to: Route::AddressPage { address: t.to.clone() }, span { class: "hash-cell addr-short", "{shorten_addr(&t.to)}" } } }
+                                                td { "data-label": "Amount", style: "color:var(--accent-green); font-weight:600;", { format!("{} {}", format_amount(t.amount), t.token_symbol) } }
                                             }
                                         }
                                     }

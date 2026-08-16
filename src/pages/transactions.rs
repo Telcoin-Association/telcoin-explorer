@@ -87,7 +87,7 @@ pub fn TransactionsPage(page: u64) -> Element {
                     }
                 } else {
                     div { class: "blocks-table-wrap",
-                        table { class: "blocks-table",
+                        table { class: "tx-table",
                             thead {
                                 tr {
                                     th { "TX HASH" }
@@ -103,12 +103,12 @@ pub fn TransactionsPage(page: u64) -> Element {
                             tbody {
                                 for tx in txs.read().iter() {
                                     tr {
-                                        td {
+                                        td { "data-label": "Tx Hash",
                                             Link { to: Route::TransactionPage { hash: tx.hash.clone() },
                                                 span { class: "hash-cell", "{shorten_hash(&tx.hash)}" }
                                             }
                                         }
-                                        td {
+                                        td { "data-label": "Method",
                                             {
                                                 if let Some(ref di) = tx.decoded_input {
                                                     rsx! { span { class: "method-badge", "{di.method}" } }
@@ -119,20 +119,20 @@ pub fn TransactionsPage(page: u64) -> Element {
                                                 }
                                             }
                                         }
-                                        td {
+                                        td { "data-label": "Block",
                                             if let Some(bn) = tx.block_number {
                                                 Link { to: Route::BlockPage { block_number: bn },
                                                     span { class: "hash-cell", "#{bn}" }
                                                 }
                                             }
                                         }
-                                        td {
+                                        td { "data-label": "From",
                                             Link { to: Route::AddressPage { address: tx.from.clone() },
                                                 span { class: "hash-cell addr-short", "{shorten_addr(&tx.from)}" }
                                             }
                                         }
-                                        td { span { class: "transfer-arrow", "→" } }
-                                        td {
+                                        td { class: "td-arrow", span { class: "transfer-arrow", "→" } }
+                                        td { "data-label": "To",
                                             if let Some(ref to) = tx.to {
                                                 Link { to: Route::AddressPage { address: to.clone() },
                                                     span { class: "hash-cell addr-short", "{shorten_addr(to)}" }
@@ -141,7 +141,7 @@ pub fn TransactionsPage(page: u64) -> Element {
                                                 span { class: "method-badge method-unknown", "Create" }
                                             }
                                         }
-                                        td { class: "td-mono",
+                                        td { "data-label": "Value", class: "td-mono",
                                             if tx.value > 0 {
                                                 span { style: "color:var(--accent-green);",
                                                     { format_wei_exact(tx.value) }
@@ -150,7 +150,7 @@ pub fn TransactionsPage(page: u64) -> Element {
                                                 span { class: "td-faint", "0" }
                                             }
                                         }
-                                        td { class: "td-mono td-faint",
+                                        td { "data-label": "Fee", class: "td-mono td-faint",
                                             {
                                                 let fee_wei = tx.gas_used as u128 * tx.gas_price as u128;
                                                 if fee_wei > 0 { format_wei_exact(fee_wei) } else { "—".to_string() }
