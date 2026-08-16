@@ -382,6 +382,38 @@ fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
         }
     }
 }
+/// Disable the search input/button and show a spinner in place of the icon,
+/// so clicking Search gives immediate visual feedback during the async
+/// address-type / token-registry lookups (the sync paths -- tx hash, block
+/// number -- navigate instantly and need no loading state).
+fn set_search_loading(loading: bool) {
+    let js = if loading {
+        r#"(function(){
+            var btn=document.querySelector('.hero-search-btn');
+            var inp=document.getElementById('home-search');
+            if(btn && !btn.dataset.origHtml){
+                btn.dataset.origHtml=btn.innerHTML;
+                btn.innerHTML='<div class="spinner" style="width:16px;height:16px;border-width:2px;margin:0;"></div>';
+                btn.disabled=true;
+                btn.style.cursor='wait';
+            }
+            if(inp){ inp.disabled=true; inp.style.opacity='0.6'; }
+        })()"#
+    } else {
+        r#"(function(){
+            var btn=document.querySelector('.hero-search-btn');
+            var inp=document.getElementById('home-search');
+            if(btn && btn.dataset.origHtml){
+                btn.innerHTML=btn.dataset.origHtml;
+                delete btn.dataset.origHtml;
+                btn.disabled=false;
+                btn.style.cursor='';
+            }
+            if(inp){ inp.disabled=false; inp.style.opacity=''; }
+        })()"#
+    };
+    let _ = js_sys::eval(js);
+}
 fn run_search() {
     use wasm_bindgen::JsCast;
     let window = match web_sys::window() { Some(w) => w, None => return };
@@ -394,6 +426,7 @@ fn run_search() {
         if q.len() == 66 && q.starts_with("0x") {
             window.location().set_href(&format!("/tx/{}", q)).ok();
         } else if q.len() == 42 && q.starts_with("0x") {
+            set_search_loading(true);
             wasm_bindgen_futures::spawn_local(async move {
                 use crate::services::rpc::{is_contract, get_token_symbol};
                 if is_contract(&q).await {
@@ -412,6 +445,7 @@ fn run_search() {
         } else {
             // Not an address/hash/block number — check the on-chain TokenRegistry
             // for a symbol or name match (e.g. "eUSD", "WTEL") before giving up.
+            set_search_loading(true);
             let query = q.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 use crate::services::rpc::get_registered_tokens;
@@ -423,6 +457,7 @@ fn run_search() {
                 if let Some(token) = found {
                     window2.location().set_href(&format!("/token/{}", token.address)).ok();
                 } else {
+                    set_search_loading(false);
                     let _ = js_sys::eval("var el=document.getElementById('home-search');if(el){el.style.borderColor='#ef4444';el.style.boxShadow='0 0 0 3px rgba(239,68,68,0.2)';setTimeout(function(){el.style.borderColor='';el.style.boxShadow='';},2000);}");
                 }
             });

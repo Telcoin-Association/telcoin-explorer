@@ -330,6 +330,23 @@ async fn connect_wallet() -> Result<String, String> {
 fn run_header_search() { run_search_for("header-search"); }
 fn run_mobile_search()  { run_search_for("mobile-search"); }
 
+/// Same idea as home.rs's search loading state: disable the input for the
+/// duration of the async is_contract/get_token_symbol lookup so clicking
+/// Search gives immediate feedback instead of an apparent no-op. Header
+/// search has no dedicated button element (icon button sits next to the
+/// input), so this just disables/dims the input itself.
+fn set_header_search_loading(id: &str, loading: bool) {
+    let js = if loading {
+        format!(
+            "var inp=document.getElementById('{id}'); if(inp){{ inp.disabled=true; inp.style.opacity='0.6'; inp.style.cursor='wait'; }}"
+        )
+    } else {
+        format!(
+            "var inp=document.getElementById('{id}'); if(inp){{ inp.disabled=false; inp.style.opacity=''; inp.style.cursor=''; }}"
+        )
+    };
+    let _ = js_sys::eval(&js);
+}
 fn run_search_for(id: &str) {
     use wasm_bindgen::JsCast;
     let window = match web_sys::window() { Some(w) => w, None => return };
@@ -342,6 +359,7 @@ fn run_search_for(id: &str) {
         if q.len() == 66 && q.starts_with("0x") {
             window.location().set_href(&format!("/tx/{}", q)).ok();
         } else if q.len() == 42 && q.starts_with("0x") {
+            set_header_search_loading(id, true);
             wasm_bindgen_futures::spawn_local(async move {
                 use crate::services::rpc::{is_contract, get_token_symbol};
                 if is_contract(&q).await {
