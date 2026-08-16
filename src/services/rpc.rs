@@ -652,6 +652,37 @@ pub async fn get_validator_leader_counts(n: u64) -> Vec<(String, u64)> {
     }
 }
 
+// ── Transaction-scoped transfers (best-effort, reuses existing endpoints) ────
+/// ERC-20 transfers associated with a specific transaction, found by paging
+/// `participant`'s transfer history (newest-first, via the existing
+/// /address/:addr/transfers endpoint) until either a tx_hash match is found
+/// or we've paged past the transaction's block number. No indexer changes
+/// needed -- this is exactly the data already shown on address/token pages,
+/// just filtered down to one transaction.
+pub async fn get_token_transfers_for_tx(tx_hash: &str, participant: &str, block_number: u64) -> Vec<TokenTransfer> {
+    let mut found = Vec::new();
+    let mut page = 0u64;
+    loop {
+        let (items, total) = match get_address_transfers(participant, page, 100).await {
+            Ok(r) => r,
+            Err(_) => break,
+        };
+        if items.is_empty() { break; }
+        let mut past_target = false;
+        for t in &items {
+            if t.tx_hash.eq_ignore_ascii_case(tx_hash) {
+                found.push(t.clone());
+            }
+            if t.block_number < block_number {
+                past_target = true;
+            }
+        }
+        if past_target || page.saturating_mul(100) >= total || page >= 5 { break; }
+        page += 1;
+    }
+    found
+}
+
 // ── Token Registry ─────────────────────────────────────────────────────────────
 /// Decode a plain ABI-encoded `address[]` return (standard dynamic array:
 /// offset word, length word, then N right-aligned 32-byte address words).

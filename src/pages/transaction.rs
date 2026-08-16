@@ -2,7 +2,8 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_tx_receipt_status, get_transaction, Transaction, format_wei_exact, shorten_hash};
+    get_tx_receipt_status, get_transaction, get_token_transfers_for_tx,
+    Transaction, TokenTransfer, format_wei_exact, format_amount, shorten_hash, shorten_addr};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
@@ -12,6 +13,7 @@ pub fn TransactionPage(hash: String) -> Element {
     let error: Signal<Option<String>>        = use_signal(|| None);
     let mut tx_success: Signal<Option<bool>> = use_signal(|| None);
     let mut input_expanded = use_signal(|| false);
+    let mut token_transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
     let hash_clone = hash.clone();
 
     use_effect(move || {
@@ -23,7 +25,17 @@ pub fn TransactionPage(hash: String) -> Element {
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
             match get_transaction(&hash).await {
-                Ok(t)  => tx.set(Some(t)),
+                Ok(t)  => {
+                    // Best-effort: find any ERC-20 transfers that happened inside this
+                    // transaction by paging the sender's transfer history (the same
+                    // data already shown on address/token pages) filtered to this tx.
+                    if let Some(bn) = t.block_number {
+                        let hash2 = hash.clone();
+                        let from2 = t.from.clone();
+                        token_transfers.set(get_token_transfers_for_tx(&hash2, &from2, bn).await);
+                    }
+                    tx.set(Some(t));
+                }
                 Err(e) => error.set(Some(e)),
             }
             tx_success.set(get_tx_receipt_status(&hash).await);
@@ -98,6 +110,34 @@ pub fn TransactionPage(hash: String) -> Element {
                                         CopyButton { text: to.clone() }
                                     } else {
                                         span { class: "chip pending", "Contract Creation" }
+                                    }
+                                }
+                            }
+                            if !token_transfers.read().is_empty() {
+                                div { class: "detail-row",
+                                    div { class: "detail-key",
+                                        { format!("Tokens Transferred ({})", token_transfers.read().len()) }
+                                    }
+                                    div { class: "detail-val", style: "flex-direction:column; align-items:flex-start; gap:6px;",
+                                        for transfer in token_transfers.read().iter() {
+                                            div { style: "display:flex; align-items:center; gap:8px; flex-wrap:wrap;",
+                                                Link { to: Route::TokenPage { address: transfer.token_address.clone() },
+                                                    span { class: "chip info", style: "font-size:11px;",
+                                                        if !transfer.token_symbol.is_empty() { "{transfer.token_symbol}" } else { "{shorten_addr(&transfer.token_address)}" }
+                                                    }
+                                                }
+                                                Link { to: Route::AddressPage { address: transfer.from.clone() },
+                                                    span { class: "hash-cell", "{shorten_addr(&transfer.from)}" }
+                                                }
+                                                span { class: "transfer-arrow", "→" }
+                                                Link { to: Route::AddressPage { address: transfer.to.clone() },
+                                                    span { class: "hash-cell", "{shorten_addr(&transfer.to)}" }
+                                                }
+                                                span { style: "color:var(--accent-green); font-weight:600;",
+                                                    { format!("{} {}", format_amount(transfer.amount), transfer.token_symbol) }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
