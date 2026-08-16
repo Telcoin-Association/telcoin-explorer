@@ -2,8 +2,9 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_tx_receipt_status, get_transaction, get_token_transfers_for_tx,
-    Transaction, TokenTransfer, format_wei_exact, format_amount, shorten_hash, shorten_addr};
+    get_tx_receipt_status, get_transaction, get_token_transfers_for_tx, get_block_by_number,
+    Transaction, TokenTransfer, format_wei_exact, format_amount, shorten_hash, shorten_addr,
+    unix_to_age, unix_to_datetime};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
@@ -14,6 +15,7 @@ pub fn TransactionPage(hash: String) -> Element {
     let mut tx_success: Signal<Option<bool>> = use_signal(|| None);
     let mut input_expanded = use_signal(|| false);
     let mut token_transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
+    let mut block_timestamp: Signal<Option<u64>> = use_signal(|| None);
     let hash_clone = hash.clone();
 
     use_effect(move || {
@@ -32,7 +34,14 @@ pub fn TransactionPage(hash: String) -> Element {
                     if let Some(bn) = t.block_number {
                         let hash2 = hash.clone();
                         let from2 = t.from.clone();
-                        token_transfers.set(get_token_transfers_for_tx(&hash2, &from2, bn).await);
+                        let (transfers_res, block_res) = futures::join!(
+                            get_token_transfers_for_tx(&hash2, &from2, bn),
+                            get_block_by_number(bn),
+                        );
+                        token_transfers.set(transfers_res);
+                        if let Ok(block) = block_res {
+                            block_timestamp.set(Some(block.timestamp));
+                        }
                     }
                     tx.set(Some(t));
                 }
@@ -88,6 +97,15 @@ pub fn TransactionPage(hash: String) -> Element {
                                         }
                                     } else {
                                         span { "Pending" }
+                                    }
+                                }
+                            }
+                            if let Some(ts) = *block_timestamp.read() {
+                                div { class: "detail-row",
+                                    div { class: "detail-key", "Timestamp" }
+                                    div { class: "detail-val",
+                                        span { "{unix_to_age(ts)}" }
+                                        span { style: "color:var(--text-muted); margin-left:8px; font-size:12px;", "({unix_to_datetime(ts)})" }
                                     }
                                 }
                             }
