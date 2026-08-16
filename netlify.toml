@@ -4,3 +4,12 @@
 
 [build.environment]
   RUST_LOG = "info"
+
+# main.css is referenced by a static path (not run through Dioxus's asset
+# hashing like the JS/WASM bundles), so without this it can get stuck in
+# browser/CDN caches across deploys -- force revalidation on every load so
+# CSS changes always reach people without a manual cache clear.
+[[headers]]
+  for = "/assets/main.css"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
