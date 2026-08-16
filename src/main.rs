@@ -15,12 +15,19 @@ fn main() {
     dioxus::launch(App);
 }
 
+const MAIN_CSS: Asset = asset!("/assets/main.css");
+
 #[component]
 fn App() -> Element {
     // Shared wallet-connection state, readable from any page (header owns
     // writing to it; contract.rs and others just read it reactively).
     use_context_provider(|| Signal::new(None::<String>));
     rsx! {
+        // The Dioxus.toml [web.resource] style declaration doesn't keep the
+        // hashed release filename in sync with index.html's <link> tag --
+        // this was silently 404ing the whole stylesheet in production.
+        // asset!() + Stylesheet is the correct pattern (same as the logo).
+        document::Stylesheet { href: MAIN_CSS }
         Router::<Route> {}
     }
 }
