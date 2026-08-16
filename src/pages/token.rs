@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     get_token_info, get_token_transfers_page, get_registered_token,
     TokenInfo, TokenTransfer, RegisteredToken,
-    shorten_hash, shorten_addr, format_amount,
+    shorten_hash, shorten_addr, format_amount, format_token_amount,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
@@ -78,25 +78,28 @@ pub fn TokenPage(address: String) -> Element {
             } else if let Some(err) = error.read().as_ref() {
                 ErrorBox { msg: err.clone() }
             } else if let Some(t) = token.read().as_ref() {
-                // Header
-                div { class: "token-page-header",
-                    div { class: "token-icon-wrap",
-                        if let Some(logo) = registry_entry.read().as_ref().map(|r| r.logo_uri.clone()).filter(|l| !l.is_empty()) {
-                            img { src: "{logo}", alt: "{t.symbol}", style: "width:100%; height:100%; border-radius:50%; object-fit:cover;" }
-                        } else {
-                            span { class: "token-icon-letter",
-                                { t.symbol.chars().next().unwrap_or('T').to_string() }
+                // Overview -- compact logo/name/symbol sits as this card's own
+                // header instead of a large standalone block above it, avoiding
+                // the redundant "big header, then immediately another card" feel.
+                div { class: "detail-panel",
+                    div { class: "token-overview-header",
+                        div { class: "token-icon-wrap token-icon-wrap-sm",
+                            if let Some(logo) = registry_entry.read().as_ref().map(|r| r.logo_uri.clone()).filter(|l| !l.is_empty()) {
+                                img { src: "{logo}", alt: "{t.symbol}", style: "width:100%; height:100%; border-radius:50%; object-fit:cover;" }
+                            } else {
+                                span { class: "token-icon-letter",
+                                    { t.symbol.chars().next().unwrap_or('T').to_string() }
+                                }
                             }
                         }
+                        div { class: "token-overview-title-block",
+                            div { class: "token-overview-name-row",
+                                span { class: "token-overview-name", "{t.name}" }
+                                span { class: "token-symbol-badge", "{t.symbol}" }
+                            }
+                            span { class: "token-overview-subtitle", "Token Overview" }
+                        }
                     }
-                    div {
-                        h1 { class: "page-title", "{t.name}" }
-                        span { class: "token-symbol-badge", "{t.symbol}" }
-                    }
-                }
-                // Overview
-                div { class: "detail-panel",
-                    div { class: "detail-panel-title", "Token Overview" }
                     div { class: "detail-table",
                         div { class: "detail-row",
                             div { class: "detail-key", "Contract Address" }
@@ -124,7 +127,7 @@ pub fn TokenPage(address: String) -> Element {
                         div { class: "detail-row",
                             div { class: "detail-key", "Total Supply" }
                             div { class: "detail-val",
-                                { format!("{} {}", t.total_supply, t.symbol) }
+                                { format!("{} {}", format_token_amount(&t.total_supply, t.decimals), t.symbol) }
                             }
                         }
                         div { class: "detail-row",

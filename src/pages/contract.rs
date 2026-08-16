@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     resolve_selectors, FunctionSignature,
     get_contract_info, get_address_transfers, contract_call, ContractInfo,
-    TokenTransfer, shorten_hash, shorten_addr, unix_to_age, format_wei_exact, format_amount,
+    TokenTransfer, shorten_hash, shorten_addr, unix_to_age, format_wei_exact, format_amount, format_token_amount,
     CONSENSUS_REGISTRY, INDEXER_URL,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
@@ -739,7 +739,7 @@ pub fn ContractPage(address: String) -> Element {
                                 }
                                 div { class: "detail-row",
                                     div { class: "detail-key", "Total Supply" }
-                                    div { class: "detail-val", span { style: "font-weight:600;", "{contract.token_supply} {contract.token_symbol}" } }
+                                    div { class: "detail-val", span { style: "font-weight:600;", { format!("{} {}", format_token_amount(&contract.token_supply, contract.token_decimals), contract.token_symbol) } } }
                                 }
                                 div { class: "detail-row",
                                     div { class: "detail-key", "Token Page" }

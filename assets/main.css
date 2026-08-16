@@ -573,6 +573,19 @@ input  { font-family: inherit; }
 .token-icon-wrap { width: 52px; height: 52px; background: var(--tel-blue-dim); border: 2px solid var(--tel-blue-border); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .token-icon-letter { font-size: 22px; font-weight: 800; color: var(--tel-blue); }
 .token-symbol-badge { display: inline-block; background: var(--tel-blue-dim); border: 1px solid var(--tel-blue-border); color: var(--tel-blue); padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+/* Compact header row inside the Token Overview card, replacing the old
+   large standalone .token-page-header block that sat above the card. */
+.token-overview-header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.token-icon-wrap-sm { width: 36px; height: 36px; flex-shrink: 0; }
+.token-icon-wrap-sm .token-icon-letter { font-size: 15px; }
+.token-overview-title-block { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.token-overview-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.token-overview-name { font-size: 16px; font-weight: 800; color: var(--text-primary); }
+.token-overview-subtitle { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* ── CONTRACT PAGE ────────────────────────────────────────────────── */
 .contract-header { display: flex; align-items: flex-start; gap: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; box-shadow: var(--shadow-card); }

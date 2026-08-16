@@ -312,6 +312,42 @@ pub fn format_amount(amount: f64) -> String {
     if s.ends_with('.') { s.pop(); }
     s
 }
+/// Format a raw on-chain token amount (an exact integer string in the
+/// token's base units, e.g. totalSupply()) as a human-readable value:
+/// decimal point inserted at `decimals`, trailing zeros trimmed, thousands
+/// separators on the whole part. Pure integer/string math -- no f64 -- so
+/// this stays exact even for supplies beyond f64's safe integer range.
+pub fn format_token_amount(raw: &str, decimals: u8) -> String {
+    let digits: String = raw.trim().chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() { return "0".to_string(); }
+    let decimals = decimals as usize;
+    let padded = if digits.len() <= decimals {
+        format!("{digits:0>width$}", width = decimals + 1)
+    } else {
+        digits
+    };
+    let split_at = padded.len() - decimals;
+    let (whole, frac) = padded.split_at(split_at);
+    let whole_with_commas = add_thousands_separators(whole);
+    let frac_trimmed = frac.trim_end_matches('0');
+    if frac_trimmed.is_empty() {
+        whole_with_commas
+    } else {
+        format!("{whole_with_commas}.{frac_trimmed}")
+    }
+}
+fn add_thousands_separators(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(*b as char);
+    }
+    out
+}
 pub fn format_gas(gas: u64) -> String {
     if gas >= 1_000_000 { format!("{:.2}M", gas as f64 / 1_000_000.0) }
     else if gas >= 1_000 { format!("{:.1}K", gas as f64 / 1_000.0) }
