@@ -16,14 +16,22 @@ pub fn TransactionPage(hash: String) -> Element {
     let mut input_expanded = use_signal(|| false);
     let mut token_transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
     let mut block_timestamp: Signal<Option<u64>> = use_signal(|| None);
-    let hash_clone = hash.clone();
-
-    use_effect(move || {
-        let hash       = hash_clone.clone();
-        let mut tx      = tx.clone();
-        let mut loading = loading.clone();
-        let mut error   = error.clone();
-        let mut tx_success = tx_success.clone();
+    // use_reactive: `hash` is a plain String prop, not a Signal, so without
+    // this the effect only runs once on first mount and never restarts when
+    // navigating between two TransactionPage instances via Link (Dioxus
+    // reuses the same component/hook state across route param changes for
+    // the same route type). See:
+    // https://github.com/DioxusLabs/dioxus/issues/2784
+    let mut tx      = tx.clone();
+    let mut loading = loading.clone();
+    let mut error   = error.clone();
+    use_effect(use_reactive(&hash, move |hash| {
+        // Clear stale data from any previously-viewed transaction immediately.
+        tx.set(None);
+        error.set(None);
+        tx_success.set(None);
+        token_transfers.set(vec![]);
+        block_timestamp.set(None);
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
             match get_transaction(&hash).await {
@@ -50,7 +58,7 @@ pub fn TransactionPage(hash: String) -> Element {
             tx_success.set(get_tx_receipt_status(&hash).await);
             loading.set(false);
         });
-    });
+    }));
 
     rsx! {
         div { class: "page",

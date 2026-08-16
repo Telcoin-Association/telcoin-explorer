@@ -20,11 +20,22 @@ pub fn TokenPage(address: String) -> Element {
     let mut transfers_page: Signal<u64> = use_signal(|| 0);
     let mut more_loading = use_signal(|| false);
 
-    let addr_clone = address.clone();
-    use_effect(move || {
-        let address = addr_clone.clone();
+    // use_reactive: `address` is a plain String prop, not a Signal, so
+    // without this the effect only runs once on first mount and never
+    // restarts when navigating between two TokenPage instances via Link
+    // (Dioxus reuses the same component/hook state across route param
+    // changes for the same route type). See:
+    // https://github.com/DioxusLabs/dioxus/issues/2784
+    use_effect(use_reactive(&address, move |address| {
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
+            // Clear stale data from any previously-viewed token immediately.
+            token.set(None);
+            transfers.set(vec![]);
+            transfers_total.set(0);
+            not_token.set(false);
+            registry_entry.set(None);
+            transfers_page.set(0);
             let (info_res, registry_res) = futures::join!(
                 get_token_info(&address),
                 get_registered_token(&address),
@@ -43,7 +54,7 @@ pub fn TokenPage(address: String) -> Element {
             }
             loading.set(false);
         });
-    });
+    }));
 
     let load_more = {
         let address = address.clone();

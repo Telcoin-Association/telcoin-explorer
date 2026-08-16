@@ -97,11 +97,28 @@ pub fn AddressPage(address: String) -> Element {
     let mut txs_export_loading                    = use_signal(|| false);
     let mut transfers_export_loading              = use_signal(|| false);
 
-    let addr_clone = address.clone();
-    use_effect(move || {
-        let address = addr_clone.clone();
+    // use_reactive is required here: `address` is a plain String prop, not a
+    // Signal, so without it this effect only runs once on first mount and
+    // never restarts when navigating between two AddressPage instances via
+    // Link (Dioxus reuses the same component/hook state across route param
+    // changes for the same route type -- a known limitation, see
+    // https://github.com/DioxusLabs/dioxus/issues/2784). Previously this
+    // left stale data on screen after clicking a From/To link: the header
+    // re-rendered with the new address immediately, but the transaction/
+    // transfer lists kept showing the PREVIOUS address's data.
+    use_effect(use_reactive(&address, move |address| {
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
+            txs_loading.set(true);
+            // Clear stale data from any previously-viewed address immediately,
+            // rather than leaving it on screen until the new fetch resolves.
+            native_txs.set(vec![]);
+            transfers.set(vec![]);
+            balance_wei.set(None);
+            tx_count.set(None);
+            error.set(None);
+            txs_page.set(0);
+            transfers_page.set(0);
             let (bal_res, count_res) = futures::join!(
                 get_balance_wei(&address),
                 get_tx_count(&address),
@@ -122,7 +139,7 @@ pub fn AddressPage(address: String) -> Element {
             contract_flag.set(is_contract(&address).await);
             txs_loading.set(false);
         });
-    });
+    }));
 
     let load_more_txs = {
         let address = address.clone();
@@ -464,11 +481,11 @@ pub fn AddressPage(address: String) -> Element {
                                                     if is_native_tel_transfer(&transfer.token_address) {
                                                         span { class: "chip success", style: "font-size:11px;", "TEL" }
                                                     } else if !transfer.token_symbol.is_empty() {
-                                                        Link { to: Route::AddressPage { address: transfer.token_address.clone() },
+                                                        Link { to: Route::TokenPage { address: transfer.token_address.clone() },
                                                             span { class: "chip info", style: "font-size:11px;", "{transfer.token_symbol}" }
                                                         }
                                                     } else {
-                                                        Link { to: Route::AddressPage { address: transfer.token_address.clone() },
+                                                        Link { to: Route::TokenPage { address: transfer.token_address.clone() },
                                                             span { class: "hash-cell addr-short", "{shorten_addr(&transfer.token_address)}" }
                                                         }
                                                     }

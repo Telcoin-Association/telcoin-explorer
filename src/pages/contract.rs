@@ -548,9 +548,21 @@ pub fn ContractPage(address: String) -> Element {
     // Shared wallet-connection state from main.rs's context provider --
     // fully reactive, no localStorage polling or tab-switch re-check needed.
     let wallet_connected: Signal<Option<String>> = use_context();
-    let addr_clone = address.clone();
-    use_effect(move || {
-        let address = addr_clone.clone();
+    // use_reactive: `address` is a plain String prop, not a Signal, so
+    // without this the effect only runs once on first mount and never
+    // restarts when navigating between two ContractPage instances via Link
+    // (Dioxus reuses the same component/hook state across route param
+    // changes for the same route type). See:
+    // https://github.com/DioxusLabs/dioxus/issues/2784
+    use_effect(use_reactive(&address, move |address| {
+        // Clear stale data from any previously-viewed contract immediately.
+        info.set(None);
+        transfers.set(vec![]);
+        transfers_total.set(0);
+        error.set(None);
+        signatures.set(vec![]);
+        uploaded_abi.set(vec![]);
+        abi_msg.set(None);
         let saved_json = ls_load_abi(&address);
         if !saved_json.is_empty() {
             wasm_bindgen_futures::spawn_local(async move {
@@ -581,7 +593,7 @@ pub fn ContractPage(address: String) -> Element {
             }
             loading.set(false);
         });
-    });
+    }));
 
     let load_more_transfers = {
         let address = address.clone();
