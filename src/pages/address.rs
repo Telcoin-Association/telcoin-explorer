@@ -4,7 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     is_contract,
     get_balance_wei, get_tx_count, get_address_txs, get_address_transfers,
-    TokenTransfer, Transaction, shorten_hash, shorten_addr, format_wei_exact,
+    TokenTransfer, Transaction, shorten_hash, shorten_addr, format_wei_exact, format_wei_exact_commas,
     format_transfer_amount, transfer_amount_raw_str, is_native_tel_transfer,
     CONSENSUS_REGISTRY,
 };
@@ -245,7 +245,7 @@ pub fn AddressPage(address: String) -> Element {
                         }
                         if let Some(wei_str) = balance_wei.read().as_ref() {
                             div { class: "address-balance-big",
-                                { format_wei_exact(wei_str.parse().unwrap_or(0)) }
+                                { format_wei_exact_commas(wei_str.parse().unwrap_or(0)) }
                                 span { "TEL" }
                             }
                         }

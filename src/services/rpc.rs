@@ -311,6 +311,23 @@ pub fn format_wei_exact(wei: u128) -> String {
         format!("{whole}.{trimmed}")
     }
 }
+/// Same exact integer math as format_wei_exact, but with thousands
+/// separators on the whole-number part -- for prominent balance displays
+/// where a huge raw number (e.g. an 18-decimal exact balance) is otherwise a
+/// hard-to-read wall of digits. Fractional part stays exact and uncommified.
+pub fn format_wei_exact_commas(wei: u128) -> String {
+    const BASE: u128 = 1_000_000_000_000_000_000;
+    let whole = wei / BASE;
+    let frac  = wei % BASE;
+    let whole_str = add_thousands_separators(&whole.to_string());
+    if frac == 0 {
+        whole_str
+    } else {
+        let frac_str = format!("{:018}", frac);
+        let trimmed = frac_str.trim_end_matches('0');
+        format!("{whole_str}.{trimmed}")
+    }
+}
 /// Trim a float display to its meaningful digits instead of an arbitrary
 /// fixed decimal count — avoids both truncating real precision and padding
 /// with meaningless zeros. Caps at 8 decimals (beyond that f64 has no more
