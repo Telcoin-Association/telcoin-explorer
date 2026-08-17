@@ -1,5 +1,17 @@
 // src/components/loading.rs
 use dioxus::prelude::*;
+/// Signals can be dropped out from under an in-flight async task if the
+/// component unmounts (e.g. the user navigates away) before the task
+/// resolves -- `.set()` panics in that case (ValueDroppedError). Both
+/// CopyButton and AddrDisplay have a ~1.5s delayed reset after copying,
+/// which is plenty of time for someone to click a link and navigate away
+/// before it fires. Writes from inside spawn_local go through this instead,
+/// which just silently no-ops if the signal's gone.
+fn safe_set<T: 'static>(mut sig: Signal<T>, val: T) {
+    if let Ok(mut w) = sig.try_write() {
+        *w = val;
+    }
+}
 
 #[component]
 pub fn Loading(msg: Option<String>) -> Element {
@@ -40,9 +52,9 @@ pub fn CopyButton(text: String) -> Element {
                         let script = format!("navigator.clipboard.writeText({})", 
                             serde_json::to_string(&t).unwrap_or_default());
                         let _ = js_sys::eval(&script);
-                        copied.set(true);
+                        safe_set(copied, true);
                         gloo_timers::future::TimeoutFuture::new(1500).await;
-                        copied.set(false);
+                        safe_set(copied, false);
                     });
                 },
                 if *copied.read() { "✓ Copied" } else { "Copy" }
@@ -83,9 +95,9 @@ pub fn AddrDisplay(address: String, short: String) -> Element {
                         }
                         script.push_str("\")");
                         let _ = js_sys::eval(&script);
-                        copied.set(true);
+                        safe_set(copied, true);
                         gloo_timers::future::TimeoutFuture::new(1500).await;
-                        copied.set(false);
+                        safe_set(copied, false);
                     });
                 },
                 if *copied.read() {

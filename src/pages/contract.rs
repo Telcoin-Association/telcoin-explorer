@@ -575,8 +575,11 @@ pub fn ContractPage(address: String) -> Element {
                 let parsed = parse_abi_json(&saved_json);
                 if !parsed.is_empty() {
                     let n = parsed.len();
-                    uploaded_abi.set(parsed);
-                    abi_msg.set(Some((true, format!("{} functions loaded from saved ABI", n))));
+                    // This can run up to ~2s after mount (the keccak256-ready
+                    // polling loop above) -- long enough for a hard navigation
+                    // (search box) to have torn down the app in the meantime.
+                    if let Ok(mut w) = uploaded_abi.try_write() { *w = parsed; }
+                    if let Ok(mut w) = abi_msg.try_write() { *w = Some((true, format!("{} functions loaded from saved ABI", n))); }
                 }
             });
         }

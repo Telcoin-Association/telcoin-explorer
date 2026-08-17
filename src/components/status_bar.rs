@@ -3,6 +3,17 @@ use dioxus::prelude::*;
 use gloo_timers::future::TimeoutFuture;
 use crate::services::rpc::{get_network_stats, NetworkStats, CHAIN_ID, NATIVE_TOKEN};
 
+/// See src/components/loading.rs for why this exists: a background loop's
+/// .set() call can panic if it fires at the exact moment of a hard page
+/// navigation (window.location.set_href, used by the search box), which
+/// tears down the whole WASM app mid-flight rather than giving components a
+/// chance to unmount gracefully first.
+fn safe_set<T: 'static>(mut sig: Signal<T>, val: T) {
+    if let Ok(mut w) = sig.try_write() {
+        *w = val;
+    }
+}
+
 #[component]
 pub fn StatusBar() -> Element {
     let stats: Signal<Option<NetworkStats>> = use_signal(|| None);
@@ -14,8 +25,8 @@ pub fn StatusBar() -> Element {
         wasm_bindgen_futures::spawn_local(async move {
             loop {
                 match get_network_stats().await {
-                    Ok(s) => { stats.set(Some(s)); online.set(true); }
-                    Err(_) => { online.set(false); }
+                    Ok(s) => { safe_set(stats, Some(s)); safe_set(online, true); }
+                    Err(_) => { safe_set(online, false); }
                 }
                 TimeoutFuture::new(12_000).await;
             }

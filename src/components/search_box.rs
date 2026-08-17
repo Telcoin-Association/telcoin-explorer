@@ -9,6 +9,17 @@ enum AddrKind {
     Contract,
     Eoa,
 }
+/// Signals can be dropped out from under an in-flight async task if the
+/// component unmounts (e.g. the user navigates away) before the task
+/// resolves -- `.set()` panics in that case (ValueDroppedError). Writes
+/// from inside spawn_local go through this instead, which just silently
+/// no-ops if the signal's gone, since there's nothing useful to update on a
+/// component that no longer exists.
+fn safe_set<T: 'static>(mut sig: Signal<T>, val: T) {
+    if let Ok(mut w) = sig.try_write() {
+        *w = val;
+    }
+}
 
 /// Shared search box with instant feedback: as you type a token name/symbol,
 /// a dropdown of matching registered tokens appears (client-side filter --
@@ -31,7 +42,7 @@ pub fn SearchBox(id: String, placeholder: String, is_hero: bool) -> Element {
         if all_tokens.read().is_empty() && !*tokens_load_started.read() {
             tokens_load_started.set(true);
             wasm_bindgen_futures::spawn_local(async move {
-                all_tokens.set(get_registered_tokens().await);
+                safe_set(all_tokens, get_registered_tokens().await);
             });
         }
     };
@@ -44,18 +55,18 @@ pub fn SearchBox(id: String, placeholder: String, is_hero: bool) -> Element {
         if trimmed.len() == 42 && trimmed.starts_with("0x") {
             let addr = trimmed.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                addr_preview_loading.set(true);
+                safe_set(addr_preview_loading, true);
                 if is_contract(&addr).await {
                     let sym = get_token_symbol(&addr).await;
                     if !sym.is_empty() {
-                        addr_preview.set(Some((addr.clone(), AddrKind::Token(sym))));
+                        safe_set(addr_preview, Some((addr.clone(), AddrKind::Token(sym))));
                     } else {
-                        addr_preview.set(Some((addr.clone(), AddrKind::Contract)));
+                        safe_set(addr_preview, Some((addr.clone(), AddrKind::Contract)));
                     }
                 } else {
-                    addr_preview.set(Some((addr.clone(), AddrKind::Eoa)));
+                    safe_set(addr_preview, Some((addr.clone(), AddrKind::Eoa)));
                 }
-                addr_preview_loading.set(false);
+                safe_set(addr_preview_loading, false);
             });
         } else if !trimmed.is_empty()
             && !(trimmed.len() == 66 && trimmed.starts_with("0x"))
@@ -156,7 +167,7 @@ pub fn SearchBox(id: String, placeholder: String, is_hero: bool) -> Element {
                     onblur: move |_| {
                         wasm_bindgen_futures::spawn_local(async move {
                             gloo_timers::future::TimeoutFuture::new(150).await;
-                            focused.set(false);
+                            safe_set(focused, false);
                         });
                     },
                 }

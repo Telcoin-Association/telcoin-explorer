@@ -8,6 +8,16 @@ use crate::services::rpc::{
 };
 use crate::components::loading::{Loading, ErrorBox};
 use crate::components::SearchBox;
+/// See src/components/loading.rs -- a background loop's .set() call can
+/// panic if it fires at the exact moment of a hard page navigation
+/// (window.location.set_href, used by the search box), which tears down
+/// the whole WASM app mid-flight. This loop refreshes every 30s and stays
+/// alive for as long as HomePage is mounted, so it's a real (if rare) risk.
+fn safe_set<T: 'static>(mut sig: Signal<T>, val: T) {
+    if let Ok(mut w) = sig.try_write() {
+        *w = val;
+    }
+}
 
 #[component]
 pub fn HomePage() -> Element {
@@ -54,7 +64,7 @@ pub fn HomePage() -> Element {
     use_future(move || async move {
         loop {
             gloo_timers::future::TimeoutFuture::new(30_000).await;
-            txs_loading.set(true);
+            safe_set(txs_loading, true);
             // All three fetch in parallel, same as the initial load — keeps
             // blocks and transactions updating in lockstep on every tick.
             let (stats_res, blocks_res, txs_res) = futures::join!(
@@ -66,20 +76,20 @@ pub fn HomePage() -> Element {
             // error banner. On failure, log and silently keep the last-known-good
             // data on screen rather than surfacing a persistent error banner.
             match stats_res {
-                Ok(s)  => { stats.set(Some(s)); error.set(None); }
+                Ok(s)  => { safe_set(stats, Some(s)); safe_set(error, None); }
                 Err(e) => { web_sys::console::warn_1(&format!("stats refresh failed: {e}").into()); }
             }
             match blocks_res {
-                Ok(b)  => { blocks.set(b); error.set(None); }
+                Ok(b)  => { safe_set(blocks, b); safe_set(error, None); }
                 Err(e) => { web_sys::console::warn_1(&format!("blocks refresh failed: {e}").into()); }
             }
             match txs_res {
-                Ok((t, _)) => { home_txs.set(t); error.set(None); }
+                Ok((t, _)) => { safe_set(home_txs, t); safe_set(error, None); }
                 Err(e)     => { web_sys::console::warn_1(&format!("txs refresh failed: {e}").into()); }
             }
-            txs_loading.set(false);
+            safe_set(txs_loading, false);
             let now = js_sys::Date::new_0();
-            last_updated.set(format!("{:02}:{:02}:{:02}",
+            safe_set(last_updated, format!("{:02}:{:02}:{:02}",
                 now.get_hours(), now.get_minutes(), now.get_seconds()));
         }
     });
