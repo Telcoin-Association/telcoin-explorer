@@ -1,4 +1,6 @@
 pub mod header;
+pub mod search_box;
+pub use search_box::SearchBox;
 pub mod status_bar;
 pub mod loading;
 pub mod layout;

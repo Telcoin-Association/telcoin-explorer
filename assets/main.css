@@ -138,6 +138,26 @@ input  { font-family: inherit; }
 .header-search-btn { background: transparent; border: none; border-left: 1px solid var(--border-mid); color: var(--text-muted); padding: 0 10px; display: flex; align-items: center; justify-content: center; transition: color 0.15s, background 0.15s; flex-shrink: 0; }
 .header-search-btn:hover { color: var(--tel-blue); background: var(--tel-blue-dim); }
 
+/* ── SEARCH BOX DROPDOWN ──────────────────────────────────────────── */
+.search-box-wrap { position: relative; width: 100%; }
+.search-dropdown {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60;
+  background: var(--bg-card); border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  overflow: hidden; max-height: 320px; overflow-y: auto;
+}
+.search-dropdown-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; font-size: 13px; color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle); transition: background 0.12s;
+}
+.search-dropdown-item:last-child { border-bottom: none; }
+.search-dropdown-item:hover { background: var(--tel-blue-dim); }
+.search-dropdown-addr { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.search-dropdown-loading {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; font-size: 12px; color: var(--text-muted);
+}
 /* ── WALLET BUTTON ────────────────────────────────────────────────── */
 .wallet-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -168,7 +188,9 @@ input  { font-family: inherit; }
     linear-gradient(180deg, #050f20 0%, #0a1628 60%, var(--bg-surface) 100%);
   padding: 48px 0 52px;
   border-bottom: 1px solid var(--border);
-  position: relative; overflow: hidden;
+  position: relative;
+  /* NOT overflow:hidden -- that would clip the search dropdown, which is
+     position:absolute and extends below the hero's own bounds. */
 }
 .hero::before {
   content: '';

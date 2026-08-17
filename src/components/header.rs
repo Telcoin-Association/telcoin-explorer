@@ -1,6 +1,7 @@
 // src/components/header.rs
 use dioxus::prelude::*;
 use crate::router::Route;
+use crate::components::SearchBox;
 const LOGO: Asset = asset!("/assets/telcoin-logo.svg");
 
 const CHAIN_ID_HEX: &str = "0x7E1";
@@ -79,26 +80,10 @@ pub fn Header() -> Element {
 
                 // ── Search (hidden on home page) ───────────────────────
                 if !is_home {
-                    div { class: "header-search-box",
-                        input {
-                            class: "header-search-input",
-                            id: "header-search",
-                            placeholder: "Search address / tx hash / block…",
-                            onkeydown: move |e: Event<KeyboardData>| {
-                                if e.key() == Key::Enter { run_header_search(); }
-                            }
-                        }
-                        button {
-                            class: "header-search-btn",
-                            onclick: move |_: Event<MouseData>| { run_header_search(); },
-                            svg {
-                                width: "15", height: "15", view_box: "0 0 24 24",
-                                fill: "none", stroke: "currentColor",
-                                stroke_width: "2.5", stroke_linecap: "round", stroke_linejoin: "round",
-                                circle { cx: "11", cy: "11", r: "8" }
-                                path { d: "m21 21-4.35-4.35" }
-                            }
-                        }
+                    SearchBox {
+                        id: "header-search".to_string(),
+                        placeholder: "Search address / tx hash / block…".to_string(),
+                        is_hero: false,
                     }
                 }
 
@@ -198,27 +183,10 @@ pub fn Header() -> Element {
                 div { class: "mobile-menu",
                     // Search in mobile menu (always show)
                     div { class: "mobile-menu-search",
-                        input {
-                            class: "header-search-input",
-                            id: "mobile-search",
-                            placeholder: "Search address / tx / block…",
-                            onkeydown: move |e: Event<KeyboardData>| {
-                                if e.key() == Key::Enter {
-                                    menu_open.set(false);
-                                    run_mobile_search();
-                                }
-                            }
-                        }
-                        button {
-                            class: "header-search-btn",
-                            onclick: move |_| { menu_open.set(false); run_mobile_search(); },
-                            svg {
-                                width: "15", height: "15", view_box: "0 0 24 24",
-                                fill: "none", stroke: "currentColor",
-                                stroke_width: "2.5", stroke_linecap: "round", stroke_linejoin: "round",
-                                circle { cx: "11", cy: "11", r: "8" }
-                                path { d: "m21 21-4.35-4.35" }
-                            }
+                        SearchBox {
+                            id: "mobile-search".to_string(),
+                            placeholder: "Search address / tx / block…".to_string(),
+                            is_hero: false,
                         }
                     }
                     Link { to: Route::HomePage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Home" }
@@ -325,103 +293,4 @@ async fn connect_wallet() -> Result<String, String> {
     js_sys::Reflect::get(&obj, &addr_key).ok()
         .and_then(|v| v.as_string())
         .ok_or_else(|| "No address returned".to_string())
-}
-
-fn run_header_search() { run_search_for("header-search"); }
-fn run_mobile_search()  { run_search_for("mobile-search"); }
-
-/// Same idea as home.rs's search loading state: disable the input for the
-/// duration of the async is_contract/get_token_symbol lookup so clicking
-/// Search gives immediate feedback instead of an apparent no-op. Header
-/// search has no dedicated button element (icon button sits next to the
-/// input), so this just disables/dims the input itself.
-fn set_header_search_loading(id: &str, loading: bool) {
-    // The search button is always the input's next DOM sibling in both the
-    // desktop (.header-search-box) and mobile (.mobile-menu-search) search
-    // boxes, so this works for either id without separate selectors.
-    let js = if loading {
-        format!(
-            "(function(){{
-                var inp=document.getElementById('{id}');
-                if(!inp) return;
-                inp.disabled=true; inp.style.opacity='0.6'; inp.style.cursor='wait';
-                var btn=inp.nextElementSibling;
-                if(btn && !btn.dataset.origHtml){{
-                    btn.dataset.origHtml=btn.innerHTML;
-                    btn.innerHTML='<div class=\"spinner\" style=\"width:14px;height:14px;border-width:2px;margin:0;\"></div>';
-                    btn.disabled=true; btn.style.cursor='wait';
-                }}
-            }})()"
-        )
-    } else {
-        format!(
-            "(function(){{
-                var inp=document.getElementById('{id}');
-                if(!inp) return;
-                inp.disabled=false; inp.style.opacity=''; inp.style.cursor='';
-                var btn=inp.nextElementSibling;
-                if(btn && btn.dataset.origHtml){{
-                    btn.innerHTML=btn.dataset.origHtml;
-                    delete btn.dataset.origHtml;
-                    btn.disabled=false; btn.style.cursor='';
-                }}
-            }})()"
-        )
-    };
-    let _ = js_sys::eval(&js);
-}
-fn run_search_for(id: &str) {
-    use wasm_bindgen::JsCast;
-    let window = match web_sys::window() { Some(w) => w, None => return };
-    let doc = match window.document() { Some(d) => d, None => return };
-    if let Some(el) = doc.get_element_by_id(id) {
-        let input: web_sys::HtmlInputElement = match el.dyn_into() { Ok(i) => i, Err(_) => return };
-        let q = input.value().trim().to_string();
-        if q.is_empty() { return; }
-        let window2 = window.clone();
-        if q.len() == 66 && q.starts_with("0x") {
-            window.location().set_href(&format!("/tx/{}", q)).ok();
-        } else if q.len() == 42 && q.starts_with("0x") {
-            set_header_search_loading(id, true);
-            wasm_bindgen_futures::spawn_local(async move {
-                use crate::services::rpc::{is_contract, get_token_symbol};
-                if is_contract(&q).await {
-                    let sym = get_token_symbol(&q).await;
-                    if !sym.is_empty() {
-                        window2.location().set_href(&format!("/token/{}", q)).ok();
-                    } else {
-                        window2.location().set_href(&format!("/contract/{}", q)).ok();
-                    }
-                } else {
-                    window2.location().set_href(&format!("/address/{}", q)).ok();
-                }
-            });
-        } else if q.chars().all(|c| c.is_ascii_digit()) {
-            window.location().set_href(&format!("/block/{}", q)).ok();
-        } else {
-            // Not an address/hash/block number — check the on-chain TokenRegistry
-            // for a symbol or name match (e.g. "eUSD", "WTEL") before giving up.
-            // Same fallback as home.rs's search box, so the header search box
-            // (visible on every non-home page) behaves consistently.
-            set_header_search_loading(id, true);
-            let query = q.clone();
-            let id_owned = id.to_string();
-            wasm_bindgen_futures::spawn_local(async move {
-                use crate::services::rpc::get_registered_tokens;
-                let tokens = get_registered_tokens().await;
-                let q_lower = query.to_lowercase();
-                let found = tokens.iter().find(|t| {
-                    t.symbol.to_lowercase() == q_lower || t.name.to_lowercase() == q_lower
-                });
-                if let Some(token) = found {
-                    window2.location().set_href(&format!("/token/{}", token.address)).ok();
-                } else {
-                    set_header_search_loading(&id_owned, false);
-                    let _ = js_sys::eval(&format!(
-                        "var el=document.getElementById('{}');if(el){{el.style.borderColor='#ef4444';setTimeout(function(){{el.style.borderColor='';}},2000);}}", id_owned
-                    ));
-                }
-            });
-        }
-    }
 }

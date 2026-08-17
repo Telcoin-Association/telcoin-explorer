@@ -7,6 +7,7 @@ use crate::services::rpc::{
     Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas, format_wei_exact,
 };
 use crate::components::loading::{Loading, ErrorBox};
+use crate::components::SearchBox;
 
 #[component]
 pub fn HomePage() -> Element {
@@ -93,30 +94,10 @@ pub fn HomePage() -> Element {
                         span { class: "hero-title-accent", "Telcoin Network" }
                         " Explorer"
                     }
-                    div { class: "hero-search-box",
-                        input {
-                            class: "hero-search-input",
-                            id: "home-search",
-                            placeholder: "Search by address, tx hash, block number, token or contract",
-                            onkeydown: move |e: Event<KeyboardData>| {
-                                if e.key() == Key::Enter { run_search(); }
-                            }
-                        }
-                        button {
-                            class: "hero-search-btn",
-                            onclick: move |_: Event<MouseData>| { run_search(); },
-                            svg {
-                                width: "18", height: "18",
-                                view_box: "0 0 24 24",
-                                fill: "none",
-                                stroke: "currentColor",
-                                stroke_width: "2.5",
-                                stroke_linecap: "round",
-                                stroke_linejoin: "round",
-                                circle { cx: "11", cy: "11", r: "8" }
-                                path { d: "m21 21-4.35-4.35" }
-                            }
-                        }
+                    SearchBox {
+                        id: "home-search".to_string(),
+                        placeholder: "Search by address, tx hash, block number, token or contract".to_string(),
+                        is_hero: true,
                     }
                 }
             }
@@ -379,88 +360,6 @@ fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
                     span { class: "stat-row-sub", "{s}" }
                 }
             }
-        }
-    }
-}
-/// Disable the search input/button and show a spinner in place of the icon,
-/// so clicking Search gives immediate visual feedback during the async
-/// address-type / token-registry lookups (the sync paths -- tx hash, block
-/// number -- navigate instantly and need no loading state).
-fn set_search_loading(loading: bool) {
-    let js = if loading {
-        r#"(function(){
-            var btn=document.querySelector('.hero-search-btn');
-            var inp=document.getElementById('home-search');
-            if(btn && !btn.dataset.origHtml){
-                btn.dataset.origHtml=btn.innerHTML;
-                btn.innerHTML='<div class="spinner" style="width:16px;height:16px;border-width:2px;margin:0;"></div>';
-                btn.disabled=true;
-                btn.style.cursor='wait';
-            }
-            if(inp){ inp.disabled=true; inp.style.opacity='0.6'; }
-        })()"#
-    } else {
-        r#"(function(){
-            var btn=document.querySelector('.hero-search-btn');
-            var inp=document.getElementById('home-search');
-            if(btn && btn.dataset.origHtml){
-                btn.innerHTML=btn.dataset.origHtml;
-                delete btn.dataset.origHtml;
-                btn.disabled=false;
-                btn.style.cursor='';
-            }
-            if(inp){ inp.disabled=false; inp.style.opacity=''; }
-        })()"#
-    };
-    let _ = js_sys::eval(js);
-}
-fn run_search() {
-    use wasm_bindgen::JsCast;
-    let window = match web_sys::window() { Some(w) => w, None => return };
-    let doc = match window.document() { Some(d) => d, None => return };
-    if let Some(el) = doc.get_element_by_id("home-search") {
-        let input: web_sys::HtmlInputElement = match el.dyn_into() { Ok(i) => i, Err(_) => return };
-        let q = input.value().trim().to_string();
-        if q.is_empty() { return; }
-        let window2 = window.clone();
-        if q.len() == 66 && q.starts_with("0x") {
-            window.location().set_href(&format!("/tx/{}", q)).ok();
-        } else if q.len() == 42 && q.starts_with("0x") {
-            set_search_loading(true);
-            wasm_bindgen_futures::spawn_local(async move {
-                use crate::services::rpc::{is_contract, get_token_symbol};
-                if is_contract(&q).await {
-                    let sym = get_token_symbol(&q).await;
-                    if !sym.is_empty() {
-                        window2.location().set_href(&format!("/token/{}", q)).ok();
-                    } else {
-                        window2.location().set_href(&format!("/contract/{}", q)).ok();
-                    }
-                } else {
-                    window2.location().set_href(&format!("/address/{}", q)).ok();
-                }
-            });
-        } else if q.chars().all(|c| c.is_ascii_digit()) {
-            window.location().set_href(&format!("/block/{}", q)).ok();
-        } else {
-            // Not an address/hash/block number — check the on-chain TokenRegistry
-            // for a symbol or name match (e.g. "eUSD", "WTEL") before giving up.
-            set_search_loading(true);
-            let query = q.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                use crate::services::rpc::get_registered_tokens;
-                let tokens = get_registered_tokens().await;
-                let q_lower = query.to_lowercase();
-                let found = tokens.iter().find(|t| {
-                    t.symbol.to_lowercase() == q_lower || t.name.to_lowercase() == q_lower
-                });
-                if let Some(token) = found {
-                    window2.location().set_href(&format!("/token/{}", token.address)).ok();
-                } else {
-                    set_search_loading(false);
-                    let _ = js_sys::eval("var el=document.getElementById('home-search');if(el){el.style.borderColor='#ef4444';el.style.boxShadow='0 0 0 3px rgba(239,68,68,0.2)';setTimeout(function(){el.style.borderColor='';el.style.boxShadow='';},2000);}");
-                }
-            });
         }
     }
 }
