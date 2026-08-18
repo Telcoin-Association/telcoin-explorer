@@ -134,7 +134,7 @@ pub fn HomePage() -> Element {
                                 }
                             }
                             div { class: "stat-row-body",
-                                span { class: "stat-row-label", "NETWORK" }
+                                span { class: "stat-row-label", "EXPLORER" }
                                 span {
                                     class: "stat-row-value live-value-inline",
                                     style: if !*is_live.read() { "color:#ef4444;" } else { "" },
@@ -145,7 +145,7 @@ pub fn HomePage() -> Element {
                                     if !last_updated.read().is_empty() {
                                         { format!("Updated {}", last_updated.read()) }
                                     } else {
-                                        "rpc.telcoin.network"
+                                        "indexer.telscan.xyz"
                                     }
                                 }
                             }
