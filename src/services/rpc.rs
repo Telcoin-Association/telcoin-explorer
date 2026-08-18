@@ -80,6 +80,7 @@ pub struct NetworkStats {
     pub chain_id:        u64,
     pub epoch_number:    Option<u64>,
     pub validator_count: usize,
+    pub total_txs:       u64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenTransfer {
@@ -443,6 +444,7 @@ pub async fn get_network_stats() -> Result<NetworkStats, String> {
         chain_id:        u64,
         epoch_number:    Option<u64>,
         validator_count: usize,
+        total_txs:       Option<u64>,
     }
     let s: ApiStats = indexer_get("/stats").await?;
     Ok(NetworkStats {
@@ -451,6 +453,7 @@ pub async fn get_network_stats() -> Result<NetworkStats, String> {
         chain_id:        s.chain_id,
         epoch_number:    s.epoch_number,
         validator_count: s.validator_count,
+        total_txs:       s.total_txs.unwrap_or(0),
     })
 }
 pub async fn get_block_number() -> Result<u64, String> {
