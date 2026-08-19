@@ -2,6 +2,8 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::components::SearchBox;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 const LOGO: Asset = asset!("/assets/telcoin-logo.svg");
 
 const CHAIN_ID_HEX: &str = "0x7E1";
@@ -18,6 +20,17 @@ fn ls_set(key: &str, val: &str) {
 }
 fn ls_remove(key: &str) {
     let _ = js_sys::eval(&format!("localStorage.removeItem('{}')", key));
+}
+/// Clears our local wallet state AND asks MetaMask to revoke the site's
+/// permission grant (best-effort -- older wallets may not support this
+/// method, hence the try/catch). Without the revoke, MetaMask keeps
+/// treating the site as already-authorized for the original account, so a
+/// later "Connect" click just silently re-returns it instead of showing an
+/// account picker, even if the user switched accounts in MetaMask meanwhile.
+fn disconnect_wallet() {
+    let _ = js_sys::eval(
+        "if(window.ethereum && window.ethereum.request){            window.ethereum.request({method:'wallet_revokePermissions',params:[{eth_accounts:{}}]}).catch(function(){});        }"
+    );
 }
 
 #[component]
@@ -61,6 +74,36 @@ pub fn Header() -> Element {
                 });
             }
         }
+    });
+    // Listen for MetaMask's own accountsChanged event, so switching accounts
+    // directly in the wallet (without using our Disconnect button first)
+    // updates the UI immediately instead of silently continuing to show the
+    // old address until the user manually disconnects/reconnects.
+    use_effect(move || {
+        let window = match web_sys::window() { Some(w) => w, None => return };
+        let ethereum = match js_sys::Reflect::get(&window, &JsValue::from_str("ethereum")) {
+            Ok(e) if !e.is_undefined() && !e.is_null() => e,
+            _ => return,
+        };
+        let closure = Closure::wrap(Box::new(move |accounts: JsValue| {
+            let arr = js_sys::Array::from(&accounts);
+            if arr.length() == 0 {
+                wallet_address.set(None);
+                ls_remove("wallet_address");
+            } else if let Some(addr) = arr.get(0).as_string() {
+                ls_set("wallet_address", &addr);
+                wallet_address.set(Some(addr));
+            }
+        }) as Box<dyn FnMut(JsValue)>);
+        if let Ok(on_fn) = js_sys::Reflect::get(&ethereum, &JsValue::from_str("on"))
+            .and_then(|f| f.dyn_into::<js_sys::Function>())
+        {
+            let _ = on_fn.call2(&ethereum, &JsValue::from_str("accountsChanged"), closure.as_ref().unchecked_ref());
+        }
+        // Intentionally leaked: this listener needs to live for as long as
+        // the header (effectively the whole app) is mounted, same lifetime
+        // as window.ethereum itself.
+        closure.forget();
     });
 
     rsx! {
@@ -111,6 +154,7 @@ pub fn Header() -> Element {
                                 wallet_address.set(None);
                                 wallet_error.set(None);
                                 ls_remove("wallet_address");
+                                disconnect_wallet();
                             },
                             "×"
                         }
@@ -205,6 +249,7 @@ pub fn Header() -> Element {
                                     wallet_error.set(None);
                                     menu_open.set(false);
                                     ls_remove("wallet_address");
+                                    disconnect_wallet();
                                 },
                                 "Disconnect"
                             }
