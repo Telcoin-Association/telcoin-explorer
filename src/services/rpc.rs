@@ -366,7 +366,7 @@ pub fn format_token_amount(raw: &str, decimals: u8) -> String {
         format!("{whole_with_commas}.{frac_trimmed}")
     }
 }
-fn add_thousands_separators(s: &str) -> String {
+pub fn add_thousands_separators(s: &str) -> String {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut out = String::with_capacity(len + len / 3);

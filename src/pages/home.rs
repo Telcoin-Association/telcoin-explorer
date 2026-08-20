@@ -7,6 +7,7 @@ use crate::services::rpc::{
     Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas, format_wei_exact,
 };
 use crate::components::loading::{Loading, ErrorBox};
+use crate::services::rpc::add_thousands_separators;
 use crate::components::SearchBox;
 /// See src/components/loading.rs -- a background loop's .set() call can
 /// panic if it fires at the exact moment of a hard page navigation
@@ -160,7 +161,7 @@ pub fn HomePage() -> Element {
                             value: format!("{}", s.validator_count),
                             sub: Some("Active committee".to_string()) }
                         StatRow { label: "TOTAL TXNS",
-                            value: format_gas(s.total_txs),
+                            value: add_thousands_separators(&s.total_txs.to_string()),
                             sub: Some("All time".to_string()) }
                     } else {
                         div { class: "stats-loading", "Loading network stats…" }
