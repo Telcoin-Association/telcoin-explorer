@@ -683,11 +683,11 @@ input  { font-family: inherit; }
 .leader-table-wrap { padding: 0; }
 .leader-header { display: grid; grid-template-columns: 32px 1fr 80px 60px 1fr; padding: 10px 18px; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border); background: var(--bg-surface); gap: 12px; }
 .leader-row { display: grid; grid-template-columns: 32px 1fr 80px 60px 1fr; padding: 11px 18px; align-items: center; border-bottom: 1px solid var(--border-subtle); gap: 12px; transition: background 0.12s; }
+.leader-pct { font-size: 12px; color: var(--text-secondary); }
 .leader-row:last-child { border-bottom: none; }
 .leader-row:hover { background: var(--tel-blue-dim); }
 .leader-rank { color: var(--text-muted); font-size: 12px; }
 .leader-count { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
-.leader-pct { font-size: 12px; color: var(--text-secondary); }
 .leader-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
 .leader-bar-fill { height: 100%; background: linear-gradient(90deg, var(--tel-blue), var(--accent-cyan)); border-radius: 3px; }
 

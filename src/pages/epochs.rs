@@ -2,8 +2,7 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_current_epoch_data, get_validator_leader_counts,
-    get_block_number, EpochData,
+    get_current_epoch_data, get_validator_leader_counts, EpochData,
     shorten_addr, CONSENSUS_REGISTRY,
 };
 use crate::components::loading::{Loading, ErrorBox};
@@ -14,7 +13,7 @@ struct LeaderRow {
     addr:    String,
     short:   String,
     count:   u64,
-    pct:     String,
+    pct:     Option<String>,
     bar_pct: String,
 }
 struct CommitteeRow {
@@ -29,6 +28,8 @@ struct CommitteeRow {
 pub fn EpochsPage() -> Element {
     let mut epoch_data: Signal<Option<EpochData>>     = use_signal(|| None);
     let mut leader_counts: Signal<Vec<(String, u64)>> = use_signal(|| vec![]);
+    let mut leader_window: Signal<u64>                = use_signal(|| 0);
+    let mut leader_capped: Signal<bool>                = use_signal(|| false);
     let mut loading  = use_signal(|| true);
     let mut error: Signal<Option<String>>             = use_signal(|| None);
 
@@ -39,27 +40,44 @@ pub fn EpochsPage() -> Element {
                 Ok(d)  => d,
                 Err(e) => { error.set(Some(e)); loading.set(false); return; }
             };
+            // How many blocks has the CURRENT epoch had so far -- leader
+            // counts determine reward distribution at concludeEpoch(), so
+            // the distribution shown should reflect epoch progress, not an
+            // arbitrary fixed block count. Capped at 1000 since that's the
+            // indexer's own hard limit on this endpoint (confirmed: asking
+            // for window=5000 gets silently clamped server-side) -- for
+            // epochs longer than that we can only show a partial, most-
+            // recent window, not the true full-epoch count.
+            let blocks_this_epoch = data.latest_block.saturating_sub(data.start_block) + 1;
+            let window = blocks_this_epoch.min(1000);
             epoch_data.set(Some(data));
             loading.set(false);
-            let counts = get_validator_leader_counts(200).await;
+            let counts = get_validator_leader_counts(window).await;
             leader_counts.set(counts);
+            leader_window.set(window);
+            leader_capped.set(blocks_this_epoch > 1000);
         });
     });
 
     // Pre-compute leader rows outside RSX
     let leader_rows: Vec<LeaderRow> = {
         let counts = leader_counts.read().clone();
+        let capped = *leader_capped.read();
         let total: u64 = counts.iter().map(|(_, c)| c).sum();
         let max: u64   = counts.first().map(|(_, c)| *c).unwrap_or(1);
         counts.into_iter().enumerate().map(|(i, (addr, count))| {
-            let pct     = if total > 0 { count as f64 / total as f64 * 100.0 } else { 0.0 };
-            let bar_pct = if max   > 0 { count as f64 / max   as f64 * 100.0 } else { 0.0 };
+            let bar_pct = if max > 0 { count as f64 / max as f64 * 100.0 } else { 0.0 };
+            let pct = if !capped && total > 0 {
+                Some(format!("{:.1}%", count as f64 / total as f64 * 100.0))
+            } else {
+                None
+            };
             LeaderRow {
                 rank:    i + 1,
                 short:   shorten_addr(&addr),
                 addr,
                 count,
-                pct:     format!("{pct:.1}%"),
+                pct,
                 bar_pct: format!("{bar_pct:.1}%"),
             }
         }).collect()
@@ -83,8 +101,13 @@ pub fn EpochsPage() -> Element {
 
     // Pre-compute quorum string
     let quorum_str = epoch_data.read().as_ref().map(|d| {
-        let f      = (d.validator_count as f64 - 1.0) / 3.0;
-        let quorum = (2.0 * f).floor() as usize + 1;
+        // Standard BFT: f = floor((n-1)/3) tolerable-faulty validators,
+        // quorum = 2f+1. Must use integer division -- the previous float
+        // version (float f, then floor(2.0*f)+1) happened to match for
+        // n=5 but gives the WRONG answer for other validator counts, e.g.
+        // n=6 would incorrectly show quorum=4 instead of the correct 3.
+        let f      = d.validator_count.saturating_sub(1) / 3;
+        let quorum = 2 * f + 1;
         format!("{} / {}", quorum, d.validator_count)
     }).unwrap_or_default();
 
@@ -241,8 +264,24 @@ pub fn EpochsPage() -> Element {
                 div { class: "panel", style: "margin-bottom:20px;",
                     div { class: "panel-header",
                         span { class: "panel-title", "Leader Distribution" }
-                        span { class: "panel-count", "(last 200 blocks)" }
+                        if !*leader_capped.read() {
+                            span { class: "live-dot", style: "margin-left:8px;" }
+                        }
+                        span { class: "panel-count",
+                            if *leader_capped.read() {
+                                { format!("Epoch #{epoch_num} · last {} blocks", leader_window.read()) }
+                            } else {
+                                { format!("Epoch #{epoch_num} · {} blocks so far (live)", leader_window.read()) }
+                            }
+                        }
                     }
+                    // SHARE shows "--" rather than a number when the window
+                    // is capped (epoch longer than the indexer's 1000-block
+                    // limit on this endpoint) -- a percentage there would
+                    // read as "this is your reward share" when it's really
+                    // only a partial, most-recent slice, not the true
+                    // full-epoch count. In practice epochs on this testnet
+                    // run ~50-100 blocks, so this is rare.
                     if leader_rows.is_empty() {
                         div { class: "panel-empty", "No leader data available." }
                     } else {
@@ -261,7 +300,9 @@ pub fn EpochsPage() -> Element {
                                         span { class: "hash-cell", "{row.short}" }
                                     }
                                     span { class: "leader-count", "{row.count}" }
-                                    span { class: "leader-pct", "{row.pct}" }
+                                    span { class: "leader-pct",
+                                        if let Some(pct) = &row.pct { "{pct}" } else { "—" }
+                                    }
                                     div { class: "leader-bar-wrap",
                                         div { class: "leader-bar-fill",
                                             style: "width:{row.bar_pct}"

@@ -2,28 +2,36 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_validators_from_registry, get_block_number, get_epoch_info,
+    get_validators, get_current_epoch_data, ValidatorInfo,
     shorten_addr, CONSENSUS_REGISTRY, VALIDATOR_STAKE_REQUIRED,
-    EPOCH_DURATION_HOURS,
 };
 use crate::components::loading::{Loading, ErrorBox};
 
 #[component]
 pub fn ValidatorsPage() -> Element {
-    let validators: Signal<Vec<String>>  = use_signal(|| vec![]);
-    let epoch_num:  Signal<Option<u64>> = use_signal(|| None);
+    let validators: Signal<Vec<ValidatorInfo>> = use_signal(|| vec![]);
+    let epoch_num:  Signal<Option<u64>>         = use_signal(|| None);
+    // Real on-chain epoch duration (hours), not a hardcoded constant --
+    // epochs.rs already fetches this live; this page previously showed a
+    // static "6h" that happened to currently be correct but would silently
+    // go stale if the real value ever changed.
+    let epoch_duration_h: Signal<u64>           = use_signal(|| 6);
     let loading     = use_signal(|| true);
-    let error: Signal<Option<String>>   = use_signal(|| None);
+    let error: Signal<Option<String>>           = use_signal(|| None);
 
     use_effect(move || {
         let mut validators = validators.clone();
         let mut epoch_num  = epoch_num.clone();
+        let mut epoch_duration_h = epoch_duration_h.clone();
         let mut loading    = loading.clone();
         let mut error      = error.clone();
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
-            epoch_num.set(get_epoch_info().await);
-            match get_validators_from_registry().await {
+            if let Ok(d) = get_current_epoch_data().await {
+                epoch_num.set(Some(d.epoch));
+                epoch_duration_h.set(d.epoch_duration / 3600);
+            }
+            match get_validators().await {
                 Ok(v)  => validators.set(v),
                 Err(e) => error.set(Some(e)),
             }
@@ -121,7 +129,7 @@ pub fn ValidatorsPage() -> Element {
                     div { class: "info-card-icon", "⏱" }
                     div {
                         div { class: "info-card-label", "Epoch Duration" }
-                        div { class: "info-card-value", "{EPOCH_DURATION_HOURS}h" }
+                        div { class: "info-card-value", "{epoch_duration_h}h" }
                         div { class: "info-card-sub", "{epoch_sub}" }
                     }
                 }
@@ -184,7 +192,7 @@ pub fn ValidatorsPage() -> Element {
                         "Active Validators"
                     }
                     span { class: "panel-count",
-                        "({validators.read().len()} seen in last 50 blocks)"
+                        "({validators.read().len()} in current committee)"
                     }
                 }
 
@@ -194,7 +202,7 @@ pub fn ValidatorsPage() -> Element {
                     ErrorBox { msg: err.clone() }
                 } else if validators.read().is_empty() {
                     div { class: "empty-state",
-                        "No validator addresses found in recent blocks."
+                        "No validators found in the current committee."
                     }
                 } else {
                     div { class: "table-wrapper",
@@ -209,18 +217,24 @@ pub fn ValidatorsPage() -> Element {
                                 }
                             }
                             tbody {
-                                for (i, addr) in validators.read().iter().enumerate() {
+                                for (i, v) in validators.read().iter().enumerate() {
                                     tr {
                                         td { style: "color: var(--text-muted);", "{i + 1}" }
                                         td {
-                                            Link { to: Route::AddressPage { address: addr.clone() },
-                                                span { class: "hash-cell", "{addr}" }
+                                            Link { to: Route::AddressPage { address: v.address.clone() },
+                                                span { class: "hash-cell", "{v.address}" }
                                             }
                                         }
                                         td { span { class: "vtype-badge cvv", "CVV" } }
-                                        td { span { class: "chip success", "Active" } }
                                         td {
-                                            Link { to: Route::AddressPage { address: addr.clone() },
+                                            if v.is_retired {
+                                                span { class: "chip failed", "Retired" }
+                                            } else {
+                                                span { class: "chip success", "Active" }
+                                            }
+                                        }
+                                        td {
+                                            Link { to: Route::AddressPage { address: v.address.clone() },
                                                 span { class: "action-link", "View →" }
                                             }
                                         }
@@ -238,7 +252,7 @@ pub fn ValidatorsPage() -> Element {
                 div {
                     strong { "Epoch Transitions: " }
                     "Every "
-                    strong { "{EPOCH_DURATION_HOURS} hours" }
+                    strong { "{epoch_duration_h} hours" }
                     ", the ConsensusRegistry runs "
                     code { "concludeEpoch()" }
                     " to finalise validator rewards based on leader selection counts, then shuffles the committee for the next epoch using Fisher-Yates seeded by the epoch's aggregate BLS12-381 signature. "
