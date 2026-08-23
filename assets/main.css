@@ -809,15 +809,48 @@ input  { font-family: inherit; }
   .page { padding: 16px var(--PAD); }
   .blocks-inner { padding: 16px var(--PAD); }
 
-  /* Hide less important columns */
+  /* Show every column on mobile too, stacked 2-per-row with labels
+     instead of hiding gas/leader (blocks) or block/from/to (transactions)
+     -- same labeled-stacking pattern already used for Recent Transfers. */
   .home-table-header { display: none; }
-  .home-block-row { grid-template-columns: auto 1fr 42px; gap: 8px; padding: 10px 12px; }
-  .home-block-row .hbr-gas { display: none; }
-  .home-block-row .hbr-leader { display: none; }
-  .home-tx-row { grid-template-columns: auto 1fr 70px; gap: 8px; padding: 10px 12px; }
-  .home-tx-row .htr-to { display: none; }
-  .home-tx-row .htr-block { display: none; }
-  .home-tx-row .htr-from { display: none; }
+  .home-block-row {
+    grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px;
+    height: auto; align-items: start;
+  }
+  .hbr-block  { grid-column: 1 / -1; }
+  .hbr-age    { grid-column: 1; display: block; }
+  .hbr-txns   { grid-column: 2; display: block; }
+  .hbr-gas    { grid-column: 1; display: block; }
+  .hbr-leader { grid-column: 2; display: block; }
+  .hbr-age::before, .hbr-txns::before, .hbr-gas::before, .hbr-leader::before {
+    display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
+  }
+  .hbr-age::before    { content: "Age"; }
+  .hbr-txns::before   { content: "Txns"; }
+  .hbr-gas::before    { content: "Gas Used"; }
+  .hbr-leader::before { content: "Leader"; }
+
+  .home-tx-row {
+    grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px;
+    height: auto; align-items: start;
+  }
+  .htr-hash   { grid-column: 1 / -1; }
+  .htr-method { grid-column: 1; display: block; }
+  .htr-block  { grid-column: 2; display: block; }
+  .htr-from   { grid-column: 1; display: block; }
+  .htr-to     { grid-column: 2; display: block; }
+  .htr-value  { grid-column: 1 / -1; display: block; }
+  .htr-method::before, .htr-block::before, .htr-from::before,
+  .htr-to::before, .htr-value::before {
+    display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
+  }
+  .htr-method::before { content: "Method"; }
+  .htr-block::before  { content: "Block"; }
+  .htr-from::before   { content: "From"; }
+  .htr-to::before     { content: "To"; }
+  .htr-value::before  { content: "Value"; }
 
   /* Detail */
   .detail-row { grid-template-columns: 90px 1fr; }

@@ -49,7 +49,7 @@ pub fn Footer() -> Element {
                     }
                 }
                 div { class: "footer-right",
-                    span { class: "footer-version", "v0.2.3" }
+                    span { class: "footer-version", "v0.2.4" }
                     span { class: "footer-copy", "2026 · © Telcoin Association" }
                 }
             }
