@@ -49,6 +49,7 @@ html {
   overflow-y: scroll;
   font-family: var(--font-ui);
   font-size: 15px;
+  font-weight: 500;
   color: var(--text-primary);
 }
 body { overflow-x: hidden; }
@@ -367,7 +368,7 @@ input  { font-family: inherit; }
 .home-block-row:hover { background: var(--tel-blue-dim); }
 .hbr-block { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .hbr-icon {
-  width: 24px; height: 24px; border-radius: 6px;
+  width: 22px; height: 22px; border-radius: 5px;
   background: var(--tel-blue-dim); border: 1px solid var(--tel-blue-border);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }

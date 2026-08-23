@@ -198,7 +198,7 @@ pub fn HomePage() -> Element {
                                     li { class: "home-block-row",
                                         div { class: "hbr-block",
                                             div { class: "hbr-icon",
-                                                svg { width:"14", height:"14", view_box:"0 0 24 24", fill:"none",
+                                                svg { width:"13", height:"13", view_box:"0 0 24 24", fill:"none",
                                                     stroke:"var(--tel-blue)", stroke_width:"2",
                                                     stroke_linecap:"round", stroke_linejoin:"round",
                                                     path { d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }
@@ -214,11 +214,20 @@ pub fn HomePage() -> Element {
                                         }
                                         span { class: "hbr-gas",
                                             { format_gas(block.gas_used) }
-                                            span { class: "hbr-gas-pct",
-                                                {
-                                                    if block.gas_limit > 0 {
-                                                        format!(" ({:.1}%)", block.gas_used as f64 / block.gas_limit as f64 * 100.0)
-                                                    } else { String::new() }
+                                            {
+                                                if block.gas_limit > 0 {
+                                                    let pct = block.gas_used as f64 / block.gas_limit as f64 * 100.0;
+                                                    // Red = busy (>=80%), amber = moderate (50-80%), green = quiet (<50%).
+                                                    let color = if pct >= 80.0 { "#ef4444" }
+                                                        else if pct >= 50.0 { "var(--accent-yellow)" }
+                                                        else { "var(--accent-green)" };
+                                                    rsx! {
+                                                        span { class: "hbr-gas-pct", style: "color:{color};",
+                                                            { format!(" ({pct:.1}%)") }
+                                                        }
+                                                    }
+                                                } else {
+                                                    rsx! {}
                                                 }
                                             }
                                         }
@@ -271,7 +280,7 @@ pub fn HomePage() -> Element {
                                     li { class: "home-tx-row",
                                         div { class: "htr-hash",
                                             div { class: "htr-icon",
-                                                svg { width:"12", height:"12", view_box:"0 0 24 24", fill:"none",
+                                                svg { width:"13", height:"13", view_box:"0 0 24 24", fill:"none",
                                                     stroke:"var(--tel-blue)", stroke_width:"2",
                                                     stroke_linecap:"round", stroke_linejoin:"round",
                                                     path { d:"M5 12h14" }

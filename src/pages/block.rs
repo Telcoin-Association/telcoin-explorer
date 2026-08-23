@@ -141,9 +141,10 @@ pub fn BlockPage(block_number: u64) -> Element {
                                     let pct = if b.gas_limit > 0 {
                                         b.gas_used as f64 / b.gas_limit as f64 * 100.0
                                     } else { 0.0 };
-                                    let color = if pct > 80.0 { "var(--accent-green)" }
-                                        else if pct > 40.0 { "var(--tel-blue)" }
-                                        else { "var(--text-muted)" };
+                                    // Red = busy (>=80%), amber = moderate (50-80%), green = quiet (<50%).
+                                    let color = if pct >= 80.0 { "#ef4444" }
+                                        else if pct >= 50.0 { "var(--accent-yellow)" }
+                                        else { "var(--accent-green)" };
                                     rsx! {
                                         span { { format!("{} / {} ", b.gas_used, b.gas_limit) } }
                                         span { style: "color:{color}; font-weight:600;",
