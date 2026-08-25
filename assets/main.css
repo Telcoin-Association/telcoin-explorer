@@ -814,44 +814,45 @@ input  { font-family: inherit; }
      -- same labeled-stacking pattern already used for Recent Transfers. */
   .home-table-header { display: none; }
   .home-block-row {
-    grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px;
-    height: auto; align-items: start;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas:
+      "block  age    txns"
+      "gas    gas    leader";
+    gap: 6px 10px; padding: 10px 12px; height: auto; align-items: center;
   }
-  .hbr-block  { grid-column: 1 / -1; }
-  .hbr-age    { grid-column: 1; display: block; }
-  .hbr-txns   { grid-column: 2; display: block; }
-  .hbr-gas    { grid-column: 1; display: block; }
-  .hbr-leader { grid-column: 2; display: block; }
-  .hbr-age::before, .hbr-txns::before, .hbr-gas::before, .hbr-leader::before {
+  .hbr-block  { grid-area: block; }
+  .hbr-age    { grid-area: age; }
+  .hbr-txns   { grid-area: txns; justify-self: end; }
+  .hbr-gas    { grid-area: gas; display: block; }
+  .hbr-leader { grid-area: leader; display: block; justify-self: end; }
+  .hbr-leader::before {
     display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
     text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
+    content: "Leader";
   }
-  .hbr-age::before    { content: "Age"; }
-  .hbr-txns::before   { content: "Txns"; }
-  .hbr-gas::before    { content: "Gas Used"; }
-  .hbr-leader::before { content: "Leader"; }
 
   .home-tx-row {
-    grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px;
-    height: auto; align-items: start;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas:
+      "hash    method  value"
+      "from    to      block";
+    gap: 6px 10px; padding: 10px 12px; height: auto; align-items: center;
   }
-  .htr-hash   { grid-column: 1 / -1; }
-  .htr-method { grid-column: 1; display: block; }
-  .htr-block  { grid-column: 2; display: block; }
-  .htr-from   { grid-column: 1; display: block; }
-  .htr-to     { grid-column: 2; display: block; }
-  .htr-value  { grid-column: 1 / -1; display: block; }
-  .htr-method::before, .htr-block::before, .htr-from::before,
-  .htr-to::before, .htr-value::before {
+  .htr-hash   { grid-area: hash; }
+  .htr-method { grid-area: method; display: block; }
+  .htr-value  { grid-area: value; display: block; justify-self: end; }
+  .htr-from   { grid-area: from; display: block; }
+  .htr-to     { grid-area: to; display: block; }
+  .htr-block  { grid-area: block; display: block; justify-self: end; }
+  .htr-from::before, .htr-to::before, .htr-block::before {
     display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
     text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
   }
-  .htr-method::before { content: "Method"; }
-  .htr-block::before  { content: "Block"; }
-  .htr-from::before   { content: "From"; }
-  .htr-to::before     { content: "To"; }
-  .htr-value::before  { content: "Value"; }
-
+  .htr-from::before  { content: "From"; }
+  .htr-to::before    { content: "To"; }
+  .htr-block::before { content: "Block"; }
   /* Detail */
   .detail-row { grid-template-columns: 90px 1fr; }
   .detail-key, .detail-val { padding: 10px 12px; font-size: 12px; }
@@ -895,14 +896,23 @@ input  { font-family: inherit; }
   .tx-table { min-width: 0; width: 100%; }
   .tx-table thead { display: none; }
   .tx-table, .tx-table tbody { display: block; width: 100%; }
-  /* 2-column auto-flow -- works for any column count/order per page (7-8
+  /* 3-column auto-flow -- works for any column count/order per page (7-8
      cols across address/transactions/contract tables) with no per-cell grid
-     placement needed: the hidden arrow cell drops out of the flow, and
-     whatever's left just pairs up 2-per-row left to right. */
-  .tx-table tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border-bottom: 2px solid var(--border); padding: 10px 0; }
+     placement needed: the hidden arrow cell drops out of the flow, Tx Hash
+     (always the first real cell on every page using this table) spans the
+     full row for prominence, and everything else auto-flows 3-per-row. */
+  .tx-table tr { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-flow: row; gap: 6px 10px; border-bottom: 2px solid var(--border); padding: 10px 0; }
   .tx-table tr:last-child { border-bottom: none; }
+  /* On mobile, highlight the whole row on hover/tap instead of each cell
+     individually -- per-cell highlighting (the desktop behavior) leaves
+     visible gaps between cells in grid mode, looking like several separate
+     boxes rather than one smooth row, unlike home.rs's single-container
+     rows which highlight as one continuous block. */
+  .tx-table tr:hover { background: var(--tel-blue-dim); }
+  .tx-table tr:hover td { background: transparent; }
   .tx-table td { display: block; padding: 0 4px; font-size: 13px; border-bottom: none; }
   .tx-table td.td-arrow { display: none; }
+  .tx-table td:first-child { grid-column: 1 / -1; }
   .tx-table td[data-label]::before {
     content: attr(data-label);
     display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
