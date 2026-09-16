@@ -72,6 +72,25 @@ pub struct Transaction {
     pub block_number:      Option<u64>,
     pub transaction_index: Option<u64>,
     pub nonce:             u64,
+    #[serde(default)]
+    pub tx_type:           u8,
+    #[serde(default)]
+    pub tx_type_name:      String,
+    /// Present only on /txs/{hash} (detail route): the transaction's ERC-20
+    /// transfers, already resolved server-side across ALL participants --
+    /// fixes the old client-side workaround (get_token_transfers_for_tx)
+    /// which only searched the sender's own transfer history and missed
+    /// "middle hop" transfers between other addresses in multi-hop swaps.
+    /// None on list rows, and also None (not Some(vec![])) when the indexer
+    /// hasn't reached this tx's block yet -- "not indexed yet" vs "no
+    /// transfers" stay distinguishable.
+    #[serde(default)]
+    pub token_transfers:      Option<Vec<TokenTransfer>>,
+    /// The true total transfer count (may exceed token_transfers.len() if
+    /// there are more than the embedded page); paginate further via
+    /// /txs/{hash}/transfers if ever needed.
+    #[serde(default)]
+    pub token_transfer_count: Option<u64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkStats {
@@ -93,6 +112,12 @@ pub struct TokenTransfer {
     pub timestamp:     u64,
     pub token_address: String,
     pub token_symbol:  String,
+    /// Position of this transfer's log within its transaction's receipt --
+    /// orders transfers inside one tx (the /txs/{hash} embedded list and
+    /// /txs/{hash}/transfers are both in this order already; kept mainly
+    /// for completeness/future use).
+    #[serde(default)]
+    pub log_index:     u64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenInfo {
@@ -181,6 +206,8 @@ pub struct ApiTokenTransfer {
     pub timestamp:     u64,
     pub token_address: String,
     pub token_symbol:  Option<String>,
+    #[serde(default)]
+    pub log_index:     u64,
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiAddress {
@@ -559,6 +586,7 @@ fn api_transfer_to_token_transfer(t: ApiTokenTransfer) -> TokenTransfer {
         timestamp:     t.timestamp,
         token_address: t.token_address,
         token_symbol:  t.token_symbol.unwrap_or_default(),
+        log_index:     t.log_index,
     }
 }
 pub async fn get_token_symbol(contract: &str) -> String {
@@ -754,31 +782,7 @@ pub async fn get_validator_leader_counts(n: u64) -> Vec<(String, u64)> {
 /// or we've paged past the transaction's block number. No indexer changes
 /// needed -- this is exactly the data already shown on address/token pages,
 /// just filtered down to one transaction.
-pub async fn get_token_transfers_for_tx(tx_hash: &str, participant: &str, block_number: u64) -> Vec<TokenTransfer> {
-    let mut found = Vec::new();
-    let mut page = 0u64;
-    loop {
-        let (items, total) = match get_address_transfers(participant, page, 100).await {
-            Ok(r) => r,
-            Err(_) => break,
-        };
-        if items.is_empty() { break; }
-        let mut past_target = false;
-        for t in &items {
-            if t.tx_hash.eq_ignore_ascii_case(tx_hash) {
-                found.push(t.clone());
-            }
-            if t.block_number < block_number {
-                past_target = true;
-            }
-        }
-        if past_target || page.saturating_mul(100) >= total || page >= 5 { break; }
-        page += 1;
-    }
-    found
-}
-
-// ── Token Registry ─────────────────────────────────────────────────────────────
+// ── Token Registry ─────────────────────────────────────────────────────────────────────
 /// Decode a plain ABI-encoded `address[]` return (standard dynamic array:
 /// offset word, length word, then N right-aligned 32-byte address words).
 fn word_at(raw: &str, hex_offset: usize) -> &str {

@@ -2,8 +2,8 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_tx_receipt_status, get_transaction, get_token_transfers_for_tx, get_block_by_number,
-    Transaction, TokenTransfer, format_wei_exact, shorten_hash, shorten_addr,
+    get_tx_receipt_status, get_transaction, get_block_by_number,
+    Transaction, format_wei_exact, shorten_hash, shorten_addr,
     unix_to_age, unix_to_datetime, format_transfer_amount, is_native_tel_transfer};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
@@ -14,7 +14,6 @@ pub fn TransactionPage(hash: String) -> Element {
     let error: Signal<Option<String>>        = use_signal(|| None);
     let mut tx_success: Signal<Option<bool>> = use_signal(|| None);
     let mut input_expanded = use_signal(|| false);
-    let mut token_transfers: Signal<Vec<TokenTransfer>> = use_signal(|| vec![]);
     let mut block_timestamp: Signal<Option<u64>> = use_signal(|| None);
     // use_reactive: `hash` is a plain String prop, not a Signal, so without
     // this the effect only runs once on first mount and never restarts when
@@ -30,24 +29,16 @@ pub fn TransactionPage(hash: String) -> Element {
         tx.set(None);
         error.set(None);
         tx_success.set(None);
-        token_transfers.set(vec![]);
         block_timestamp.set(None);
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
             match get_transaction(&hash).await {
                 Ok(t)  => {
-                    // Best-effort: find any ERC-20 transfers that happened inside this
-                    // transaction by paging the sender's transfer history (the same
-                    // data already shown on address/token pages) filtered to this tx.
+                    // Token transfers now arrive embedded directly in `t`
+                    // (server-side, resolved across ALL participants) --
+                    // just need the block timestamp separately.
                     if let Some(bn) = t.block_number {
-                        let hash2 = hash.clone();
-                        let from2 = t.from.clone();
-                        let (transfers_res, block_res) = futures::join!(
-                            get_token_transfers_for_tx(&hash2, &from2, bn),
-                            get_block_by_number(bn),
-                        );
-                        token_transfers.set(transfers_res);
-                        if let Ok(block) = block_res {
+                        if let Ok(block) = get_block_by_number(bn).await {
                             block_timestamp.set(Some(block.timestamp));
                         }
                     }
@@ -139,13 +130,13 @@ pub fn TransactionPage(hash: String) -> Element {
                                     }
                                 }
                             }
-                            if !token_transfers.read().is_empty() {
+                            if t.token_transfer_count.unwrap_or(0) > 0 {
                                 div { class: "detail-row",
                                     div { class: "detail-key",
-                                        { format!("Tokens Transferred ({})", token_transfers.read().len()) }
+                                        { format!("Tokens Transferred ({})", t.token_transfer_count.unwrap_or(0)) }
                                     }
                                     div { class: "detail-val", style: "flex-direction:column; align-items:flex-start; gap:6px;",
-                                        for transfer in token_transfers.read().iter() {
+                                        for transfer in t.token_transfers.as_deref().unwrap_or(&[]).iter() {
                                             div { style: "display:flex; align-items:center; gap:8px; flex-wrap:wrap;",
                                                 if is_native_tel_transfer(&transfer.token_address) {
                                                     span { class: "chip success", style: "font-size:11px;", "TEL" }
