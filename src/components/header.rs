@@ -136,6 +136,7 @@ pub fn Header() -> Element {
                     Link { to: Route::BlocksPage { page: 0 },   class: "header-nav-link", "Blocks" }
                     Link { to: Route::TransactionsPage { page: 0 }, class: "header-nav-link", "Transactions" }
                     Link { to: Route::EpochsPage {},             class: "header-nav-link", "Epochs" }
+                    Link { to: Route::ConsensusPage { page: 0 }, class: "header-nav-link", "Consensus" }
                     Link { to: Route::ValidatorsPage {},         class: "header-nav-link", "Validators" }
 
                     // Wallet
@@ -237,6 +238,7 @@ pub fn Header() -> Element {
                     Link { to: Route::BlocksPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Blocks" }
                     Link { to: Route::TransactionsPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Transactions" }
                     Link { to: Route::EpochsPage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Epochs" }
+                    Link { to: Route::ConsensusPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Consensus" }
                     Link { to: Route::ValidatorsPage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Validators" }
                     if let Some(ref addr) = *wallet_address.read() {
                         div { class: "mobile-menu-wallet",

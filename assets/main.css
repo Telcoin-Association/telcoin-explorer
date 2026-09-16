@@ -385,6 +385,7 @@ input  { font-family: inherit; }
 .mini-row {
   padding: 10px 20px; border-bottom: 1px solid var(--border-subtle);
   transition: background 0.15s;
+  min-height: 41px; box-sizing: border-box;
 }
 .mini-row:last-child { border-bottom: none; }
 .mini-row:hover { background: var(--tel-blue-dim); }
