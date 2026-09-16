@@ -947,6 +947,31 @@ pub async fn get_consensus_block_batches(number: u64) -> Result<ApiConsensusBatc
     indexer_get(&format!("/consensus/blocks/{number}/batches")).await
 }
 
+/// One authority's last committed round.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiAuthorityRound {
+    pub authority: String,
+    pub round:      u32,
+}
+/// The three fields `/consensus/epochs/{n}` adds beyond what `/epochs/{n}`
+/// already gives us: pack completeness and the pack-derived state at the
+/// epoch's close. A deliberately MINIMAL struct -- serde ignores every other
+/// field in the response (epoch, record, certificate, etc, already covered
+/// by our existing /epochs/{n} fetch), so this is a light additive call, not
+/// a full switch of data source.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiConsensusEpochExtra {
+    #[serde(default)]
+    pub pack_complete:          Option<bool>,
+    #[serde(default)]
+    pub last_committed_rounds:   Option<Vec<ApiAuthorityRound>>,
+    #[serde(default)]
+    pub final_reputation_scores: Option<ApiReputationScores>,
+}
+pub async fn get_consensus_epoch_extra(n: u64) -> Result<ApiConsensusEpochExtra, String> {
+    indexer_get(&format!("/consensus/epochs/{n}")).await
+}
+
 // ── Epochs ─────────────────────────────────────────────────────────────────────
 /// Single call to /epochs/current — replaces the old ABI-decoded getCurrentEpochInfo().
 pub async fn get_current_epoch_data() -> Result<EpochData, String> {

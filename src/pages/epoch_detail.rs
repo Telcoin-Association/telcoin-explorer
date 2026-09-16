@@ -1,24 +1,38 @@
 // src/pages/epoch_detail.rs
 use dioxus::prelude::*;
 use crate::router::Route;
-use crate::services::rpc::{get_epoch_by_number, ApiEpoch, unix_to_datetime, unix_to_age};
+use crate::services::rpc::{
+    get_epoch_by_number, get_consensus_epoch_extra,
+    ApiEpoch, ApiConsensusEpochExtra, unix_to_datetime, unix_to_age,
+};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
 pub fn EpochDetailPage(epoch_number: u64) -> Element {
     let mut epoch: Signal<Option<ApiEpoch>> = use_signal(|| None);
+    let mut extra: Signal<Option<ApiConsensusEpochExtra>> = use_signal(|| None);
     let mut loading = use_signal(|| true);
     let mut error: Signal<Option<String>> = use_signal(|| None);
 
     use_effect(use_reactive(&epoch_number, move |epoch_number| {
         epoch.set(None);
+        extra.set(None);
         error.set(None);
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
-            match get_epoch_by_number(epoch_number).await {
+            let (epoch_res, extra_res) = futures::join!(
+                get_epoch_by_number(epoch_number),
+                get_consensus_epoch_extra(epoch_number),
+            );
+            match epoch_res {
                 Ok(e) => epoch.set(Some(e)),
                 Err(e) => error.set(Some(e)),
             }
+            // Best-effort supplementary data -- pack completeness / last
+            // committed rounds / final reputation scores are extras the
+            // page can render without; a failure here never blocks the
+            // core epoch record/certificate the page already shows.
+            if let Ok(x) = extra_res { extra.set(Some(x)); }
             loading.set(false);
         });
     }));
@@ -171,6 +185,66 @@ pub fn EpochDetailPage(epoch_number: u64) -> Element {
                                             td {
                                                 Link { to: Route::AddressPage { address: addr.clone() },
                                                     span { class: "hash-cell", "{addr}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(extra) = extra.read().as_ref() {
+                    if let Some(complete) = extra.pack_complete {
+                        div { class: "detail-panel", style: "margin-top:20px;",
+                            div { class: "detail-panel-title", "Consensus Pack Status" }
+                            div { class: "detail-table",
+                                div { class: "detail-row",
+                                    div { class: "detail-key", "Pack Complete" }
+                                    div { class: "detail-val",
+                                        if complete {
+                                            span { class: "chip success", "Complete" }
+                                        } else {
+                                            span { class: "chip pending", "Incomplete / Not Held Locally" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(rounds) = &extra.last_committed_rounds {
+                        if !rounds.is_empty() {
+                            div { class: "detail-panel", style: "margin-top:20px;",
+                                div { class: "detail-panel-title", { format!("Last Committed Rounds ({})", rounds.len()) } }
+                                div { class: "table-wrapper",
+                                    table { class: "tx-table",
+                                        thead { tr { th { "AUTHORITY" } th { "ROUND" } } }
+                                        tbody {
+                                            for r in rounds.iter() {
+                                                tr {
+                                                    td { style: "font-family:var(--font-mono); font-size:12px;", "{crate::services::rpc::shorten_addr(&r.authority)}" }
+                                                    td { class: "td-mono", "{r.round}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(scores) = &extra.final_reputation_scores {
+                        if !scores.scores.is_empty() {
+                            div { class: "detail-panel", style: "margin-top:20px;",
+                                div { class: "detail-panel-title", "Final Reputation Scores" }
+                                div { class: "table-wrapper",
+                                    table { class: "tx-table",
+                                        thead { tr { th { "AUTHORITY" } th { "SCORE" } } }
+                                        tbody {
+                                            for s in scores.scores.iter() {
+                                                tr {
+                                                    td { style: "font-family:var(--font-mono); font-size:12px;", "{crate::services::rpc::shorten_addr(&s.authority)}" }
+                                                    td { class: "td-mono", "{s.score}" }
                                                 }
                                             }
                                         }
