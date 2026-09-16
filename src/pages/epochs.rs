@@ -2,7 +2,8 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_current_epoch_data, get_validator_leader_counts, get_epochs_page, EpochData, ApiEpoch,
+    get_current_epoch_data, get_validator_leader_counts, get_epochs_page, get_consensus_latest,
+    EpochData, ApiEpoch, ConsensusLatest,
     shorten_addr, CONSENSUS_REGISTRY,
 };
 use crate::components::loading::{Loading, ErrorBox};
@@ -33,6 +34,7 @@ pub fn EpochsPage() -> Element {
     let mut loading  = use_signal(|| true);
     let mut error: Signal<Option<String>>             = use_signal(|| None);
     let mut recent_epochs: Signal<Vec<ApiEpoch>>       = use_signal(|| vec![]);
+    let mut consensus_latest: Signal<Option<ConsensusLatest>> = use_signal(|| None);
 
     use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
@@ -67,6 +69,13 @@ pub fn EpochsPage() -> Element {
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok((items, _total)) = get_epochs_page(0, 10).await {
                 recent_epochs.set(items);
+            }
+        });
+    });
+    use_effect(move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(c) = get_consensus_latest().await {
+                consensus_latest.set(Some(c));
             }
         });
     });
@@ -182,6 +191,21 @@ pub fn EpochsPage() -> Element {
                         div { class: "epoch-stat-label", "Current Epoch" }
                         div { class: "epoch-stat-value", "#{epoch_num}" }
                         div { class: "epoch-stat-sub", "Adiri Testnet" }
+                    }
+                    if let Some(c) = consensus_latest.read().as_ref() {
+                        div { class: "epoch-stat-card accent-blue",
+                            div { class: "epoch-stat-icon",
+                                svg { width:"22", height:"22", view_box:"0 0 24 24", fill:"none",
+                                    stroke:"currentColor", stroke_width:"1.5",
+                                    stroke_linecap:"round", stroke_linejoin:"round",
+                                    path { d:"M21 12a9 9 0 1 1-6.219-8.56" }
+                                    path { d:"M21 3v6h-6" }
+                                }
+                            }
+                            div { class: "epoch-stat-label", "Consensus Round" }
+                            div { class: "epoch-stat-value", "#{c.round}" }
+                            div { class: "epoch-stat-sub", { format!("Output #{}", c.number) } }
+                        }
                     }
                     div { class: "epoch-stat-card accent-green",
                         div { class: "epoch-stat-icon",

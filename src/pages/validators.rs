@@ -213,6 +213,8 @@ pub fn ValidatorsPage() -> Element {
                                     th { "VALIDATOR ADDRESS" }
                                     th { "ROLE" }
                                     th { "STATUS" }
+                                    th { "ACTIVATED" }
+                                    th { "EXIT EPOCH" }
                                     th { "ACTIONS" }
                                 }
                             }
@@ -231,6 +233,20 @@ pub fn ValidatorsPage() -> Element {
                                                 span { class: "chip failed", "Retired" }
                                             } else {
                                                 span { class: "chip success", "Active" }
+                                            }
+                                        }
+                                        td {
+                                            Link { to: Route::EpochDetailPage { epoch_number: v.activation_epoch as u64 },
+                                                span { class: "hash-cell", "#{v.activation_epoch}" }
+                                            }
+                                        }
+                                        td {
+                                            if v.exit_epoch == 0 {
+                                                span { class: "td-faint", "—" }
+                                            } else {
+                                                Link { to: Route::EpochDetailPage { epoch_number: v.exit_epoch as u64 },
+                                                    span { class: "hash-cell", "#{v.exit_epoch}" }
+                                                }
                                             }
                                         }
                                         td {

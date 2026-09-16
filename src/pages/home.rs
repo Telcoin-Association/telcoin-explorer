@@ -83,14 +83,14 @@ pub fn HomePage() -> Element {
     // so they don't need to join the 30s blocks/txs refresh loop.
     use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
-            if let Ok((items, _total)) = get_epochs_page(0, 5).await {
+            if let Ok((items, _total)) = get_epochs_page(0, 10).await {
                 recent_epochs_home.set(items);
             }
         });
     });
     use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
-            if let Ok((items, _total)) = get_consensus_blocks(0, 5).await {
+            if let Ok((items, _total)) = get_consensus_blocks(0, 10).await {
                 recent_consensus.set(items);
             }
         });
@@ -107,8 +107,8 @@ pub fn HomePage() -> Element {
                 get_latest_blocks(10),
                 get_latest_txs(0, 10),
                 get_consensus_latest(),
-                get_epochs_page(0, 5),
-                get_consensus_blocks(0, 5),
+                get_epochs_page(0, 10),
+                get_consensus_blocks(0, 10),
             );
             // Background refresh: on success, update data and clear any stale
             // error banner. On failure, log and silently keep the last-known-good
@@ -402,15 +402,23 @@ pub fn HomePage() -> Element {
                         if recent_epochs_home.read().is_empty() {
                             Loading { msg: Some("Loading epochs…".to_string()) }
                         } else {
-                            div { class: "mini-row-header",
+                            div { class: "mini-row-header cols-epochs",
                                 span { "EPOCH" }
                                 span { "STATUS" }
                                 span { "BLOCK RANGE" }
-                                span { "COMMITTEE" }
+                                span { "SIZE" }
                             }
                             for ep in recent_epochs_home.read().iter() {
-                                div { class: "mini-row",
-                                    Link { to: Route::EpochDetailPage { epoch_number: ep.epoch },
+                                div { class: "mini-row cols-epochs",
+                                    Link { to: Route::EpochDetailPage { epoch_number: ep.epoch }, style: "display:flex; align-items:center; gap:4px;",
+                                        div { class: "hbr-icon",
+                                            svg { width:"13", height:"13", view_box:"0 0 24 24", fill:"none",
+                                                stroke:"var(--tel-blue)", stroke_width:"2",
+                                                stroke_linecap:"round", stroke_linejoin:"round",
+                                                circle { cx:"12", cy:"12", r:"10" }
+                                                path { d:"M12 6v6l4 2" }
+                                            }
+                                        }
                                         span { class: "hash-cell", "#{ep.epoch}" }
                                     }
                                     span {
@@ -453,15 +461,25 @@ pub fn HomePage() -> Element {
                         if recent_consensus.read().is_empty() {
                             Loading { msg: Some("Loading consensus rounds…".to_string()) }
                         } else {
-                            div { class: "mini-row-header",
+                            div { class: "mini-row-header cols-consensus",
                                 span { "ROUND" }
                                 span { "EPOCH" }
                                 span { "LEADER" }
                                 span { "BATCHES" }
                             }
                             for c in recent_consensus.read().iter() {
-                                div { class: "mini-row",
-                                    span { class: "hash-cell", "#{c.round}" }
+                                div { class: "mini-row cols-consensus",
+                                    Link { to: Route::ConsensusBlockPage { number: c.number }, style: "display:flex; align-items:center; gap:4px;",
+                                        div { class: "hbr-icon",
+                                            svg { width:"13", height:"13", view_box:"0 0 24 24", fill:"none",
+                                                stroke:"var(--tel-blue)", stroke_width:"2",
+                                                stroke_linecap:"round", stroke_linejoin:"round",
+                                                path { d:"M21 12a9 9 0 1 1-6.219-8.56" }
+                                                path { d:"M21 3v6h-6" }
+                                            }
+                                        }
+                                        span { class: "hash-cell", "#{c.round}" }
+                                    }
                                     span { style: "font-size:12px; color:var(--text-secondary);", "#{c.epoch}" }
                                     span { class: "hash-cell", style: "font-size:11px;", "{shorten_addr(&c.leader)}" }
                                     if c.batch_count > 0 {
