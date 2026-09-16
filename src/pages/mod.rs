@@ -8,4 +8,5 @@ pub mod validators;
 pub mod not_found;
 pub mod token;
 pub mod epochs;
+pub mod epoch_detail;
 pub mod contract;

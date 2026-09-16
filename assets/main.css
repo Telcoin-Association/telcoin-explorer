@@ -289,7 +289,7 @@ input  { font-family: inherit; }
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   overflow: hidden; box-shadow: var(--shadow-card);
   margin-bottom: 20px;
 }
@@ -796,19 +796,14 @@ input  { font-family: inherit; }
   .hero-gas-value { font-size: 17px; }
   .hero-top-row { gap: 14px; }
 
-  /* Stats 2-col -- 5 items doesn't divide evenly, so the last one spans
-     the full row instead of sitting alone with an empty gap beside it. */
+  /* Stats 2-col -- 6 items divides evenly, simple pairing. */
   .stats-strip-card { grid-template-columns: repeat(2, 1fr); }
   .stat-row, .live-row {
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
   }
   .stats-strip-card > *:nth-child(odd)  { border-right: 1px solid var(--border-subtle); }
-  .stats-strip-card > *:last-child {
-    grid-column: 1 / -1;
-    border-right: none;
-    border-bottom: none;
-  }
+  .stats-strip-card > *:nth-last-child(-n+2) { border-bottom: none; }
   .stat-row-value { font-size: 15px; }
 
   /* Panels */

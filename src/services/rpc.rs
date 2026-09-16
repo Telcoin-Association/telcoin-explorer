@@ -293,6 +293,58 @@ pub struct ApiEpoch {
     pub certified:           bool,
     pub is_current:          bool,
     pub committee_addresses: Option<Vec<String>>,
+    /// The full stored EpochRecord; None for the current epoch (its record
+    /// is only written when the epoch closes).
+    #[serde(default)]
+    pub record:              Option<ApiEpochRecord>,
+    /// The stored EpochCertificate over `record`; None while uncertified.
+    #[serde(default)]
+    pub certificate:         Option<ApiEpochCertificate>,
+}
+/// An execution block reference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiNumHash {
+    pub number: u64,
+    pub hash:   String,
+}
+/// A consensus block reference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiConsensusNumHash {
+    pub number:   u64,
+    pub hash:     String,
+    pub hash_bs58: String,
+}
+/// A stored EpochRecord -- the signed committee-chain checkpoint for one
+/// epoch: committee/next_committee, parent_hash chaining it to the previous
+/// record, and the final execution/consensus checkpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiEpochRecord {
+    pub epoch:            u32,
+    pub digest:            String,
+    pub digest_bs58:       String,
+    pub parent_hash:       String,
+    pub parent_hash_bs58:  String,
+    pub committee:         Vec<String>,
+    pub next_committee:    Vec<String>,
+    pub final_state:       ApiNumHash,
+    pub final_consensus:   ApiConsensusNumHash,
+    pub super_quorum:      usize,
+}
+/// A stored EpochCertificate over an ApiEpochRecord: the aggregate BLS
+/// signature and which committee members actually signed it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiEpochCertificate {
+    pub epoch_hash:          String,
+    pub epoch_hash_bs58:      String,
+    pub signature:            String,
+    pub signer_indices:       Vec<u32>,
+    pub signers:               Vec<String>,
+    pub unresolved_signers:    u32,
+    pub signer_count:          u64,
+    pub super_quorum:          usize,
+    /// BLS pairing verification result; populated on the detail route only.
+    #[serde(default)]
+    pub verified:              Option<bool>,
 }
 
 // ── HTTP plumbing — text-first parsing to preserve u128 precision ───────────
@@ -752,6 +804,26 @@ pub async fn resolve_selectors(bytecode_hex: &str) -> Vec<FunctionSignature> {
 /// reads, replacing the previous direct eth_call via the public RPC WebSocket.
 pub async fn contract_call(to: &str, data: &str) -> Result<CallResponse, String> {
     indexer_post("/call", &CallRequest { to: to.to_string(), data: data.to_string() }).await
+}
+
+// ── Consensus ──────────────────────────────────────────────────────────────────
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsensusLatest {
+    pub number:       u64,
+    pub epoch:        u32,
+    pub round:        u32,
+    pub digest:       String,
+    pub digest_bs58:  String,
+    pub leader:       String,
+    pub committed_at: u64,
+    pub exec_tip:     u64,
+}
+/// The newest consensus round the observer has processed -- fires far more
+/// often than execution blocks (most rounds carry no transactions), so this
+/// is the real "heartbeat" of DAG-BFT consensus, distinct from block/tx
+/// activity.
+pub async fn get_consensus_latest() -> Result<ConsensusLatest, String> {
+    indexer_get("/consensus/latest").await
 }
 
 // ── Epochs ─────────────────────────────────────────────────────────────────────

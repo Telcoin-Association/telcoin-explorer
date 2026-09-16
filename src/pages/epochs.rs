@@ -2,7 +2,7 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_current_epoch_data, get_validator_leader_counts, EpochData,
+    get_current_epoch_data, get_validator_leader_counts, get_epochs_page, EpochData, ApiEpoch,
     shorten_addr, CONSENSUS_REGISTRY,
 };
 use crate::components::loading::{Loading, ErrorBox};
@@ -32,6 +32,7 @@ pub fn EpochsPage() -> Element {
     let mut leader_capped: Signal<bool>                = use_signal(|| false);
     let mut loading  = use_signal(|| true);
     let mut error: Signal<Option<String>>             = use_signal(|| None);
+    let mut recent_epochs: Signal<Vec<ApiEpoch>>       = use_signal(|| vec![]);
 
     use_effect(move || {
         wasm_bindgen_futures::spawn_local(async move {
@@ -56,6 +57,17 @@ pub fn EpochsPage() -> Element {
             leader_counts.set(counts);
             leader_window.set(window);
             leader_capped.set(blocks_this_epoch > 1000);
+        });
+    });
+
+    // Independent, runs once on mount: recent epoch history for the
+    // "Recent Epochs" panel below (real EpochRecord/EpochCertificate data,
+    // not just the live current-epoch summary above).
+    use_effect(move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok((items, _total)) = get_epochs_page(0, 10).await {
+                recent_epochs.set(items);
+            }
         });
     });
 
@@ -354,6 +366,63 @@ pub fn EpochsPage() -> Element {
                                             }
                                             td {
                                                 Link { to: Route::AddressPage { address: row.addr.clone() },
+                                                    span { class: "action-link", "View →" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Recent epochs ──────────────────────────
+                div { class: "panel", style: "margin-top:20px;",
+                    div { class: "panel-header",
+                        span { class: "panel-title", "Recent Epochs" }
+                    }
+                    if recent_epochs.read().is_empty() {
+                        div { class: "panel-empty", "No epoch history available yet." }
+                    } else {
+                        div { class: "table-wrapper",
+                            table { class: "tx-table",
+                                thead {
+                                    tr {
+                                        th { "EPOCH" }
+                                        th { "STATUS" }
+                                        th { "BLOCK RANGE" }
+                                        th { "COMMITTEE" }
+                                        th { "" }
+                                    }
+                                }
+                                tbody {
+                                    for ep in recent_epochs.read().iter() {
+                                        tr {
+                                            td {
+                                                Link { to: Route::EpochDetailPage { epoch_number: ep.epoch },
+                                                    span { class: "hash-cell", "#{ep.epoch}" }
+                                                }
+                                            }
+                                            td {
+                                                if ep.is_current {
+                                                    span { class: "chip pending", style: "font-size:10px;", "In Progress" }
+                                                } else if ep.certified {
+                                                    span { class: "chip success", style: "font-size:10px;", "Certified" }
+                                                } else {
+                                                    span { class: "chip failed", style: "font-size:10px;", "Uncertified" }
+                                                }
+                                            }
+                                            td { style: "font-size:12px; color:var(--text-secondary);",
+                                                if let Some(end) = ep.end_block {
+                                                    { format!("#{} – #{}", ep.start_block, end) }
+                                                } else {
+                                                    { format!("#{} – …", ep.start_block) }
+                                                }
+                                            }
+                                            td { style: "font-size:12px; color:var(--text-secondary);", "{ep.committee_size} validators" }
+                                            td {
+                                                Link { to: Route::EpochDetailPage { epoch_number: ep.epoch },
                                                     span { class: "action-link", "View →" }
                                                 }
                                             }

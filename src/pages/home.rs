@@ -2,9 +2,9 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_latest_blocks, get_network_stats, get_latest_txs,
+    get_latest_blocks, get_network_stats, get_latest_txs, get_consensus_latest,
     Transaction,
-    Block, NetworkStats, shorten_hash, shorten_addr, unix_to_age, format_gas, format_wei_exact,
+    Block, NetworkStats, ConsensusLatest, shorten_hash, shorten_addr, unix_to_age, format_gas, format_wei_exact,
 };
 use crate::components::loading::{Loading, ErrorBox};
 use crate::services::rpc::add_thousands_separators;
@@ -24,6 +24,7 @@ fn safe_set<T: 'static>(mut sig: Signal<T>, val: T) {
 pub fn HomePage() -> Element {
     let mut blocks: Signal<Vec<Block>>           = use_signal(|| vec![]);
     let mut stats:  Signal<Option<NetworkStats>> = use_signal(|| None);
+    let mut consensus_latest: Signal<Option<ConsensusLatest>> = use_signal(|| None);
     let mut loading                              = use_signal(|| true);
     let mut error: Signal<Option<String>>        = use_signal(|| None);
     let mut last_updated: Signal<String>         = use_signal(|| "".to_string());
@@ -41,10 +42,11 @@ pub fn HomePage() -> Element {
             txs_loading.set(true);
             // Fetch stats, blocks, and transactions all in parallel — no more
             // sequential per-hash lookups, so blocks and txs update together.
-            let (stats_res, blocks_res, txs_res) = futures::join!(
+            let (stats_res, blocks_res, txs_res, consensus_res) = futures::join!(
                 get_network_stats(),
                 get_latest_blocks(10),
                 get_latest_txs(0, 10),
+                get_consensus_latest(),
             );
             // Initial load: show an error banner if any fetch fails — there's
             // no prior data to fall back to.
@@ -52,6 +54,9 @@ pub fn HomePage() -> Element {
                 Ok(s)  => { stats.set(Some(s)); is_live.set(true); }
                 Err(e) => { error.set(Some(e)); is_live.set(false); }
             }
+            // Consensus round data is best-effort/supplementary -- never
+            // blocks the page or shows an error banner if it fails.
+            if let Ok(c) = consensus_res { consensus_latest.set(Some(c)); }
             match blocks_res {
                 Ok(b)  => blocks.set(b),
                 Err(e) => error.set(Some(e)),
@@ -74,14 +79,16 @@ pub fn HomePage() -> Element {
             safe_set(txs_loading, true);
             // All three fetch in parallel, same as the initial load — keeps
             // blocks and transactions updating in lockstep on every tick.
-            let (stats_res, blocks_res, txs_res) = futures::join!(
+            let (stats_res, blocks_res, txs_res, consensus_res) = futures::join!(
                 get_network_stats(),
                 get_latest_blocks(10),
                 get_latest_txs(0, 10),
+                get_consensus_latest(),
             );
             // Background refresh: on success, update data and clear any stale
             // error banner. On failure, log and silently keep the last-known-good
             // data on screen rather than surfacing a persistent error banner.
+            if let Ok(c) = consensus_res { safe_set(consensus_latest, Some(c)); }
             match stats_res {
                 Ok(s)  => { safe_set(stats, Some(s)); safe_set(error, None); safe_set(is_live, true); }
                 Err(e) => {
@@ -157,6 +164,11 @@ pub fn HomePage() -> Element {
                         StatRow { label: "CURRENT EPOCH",
                             value: format!("#{}", s.epoch_number.unwrap_or(0)),
                             sub: Some("Adiri Testnet".to_string()) }
+                        if let Some(c) = consensus_latest.read().as_ref() {
+                            StatRow { label: "CONSENSUS ROUND",
+                                value: format!("#{}", c.round),
+                                sub: Some(format!("Output #{}", c.number)) }
+                        }
                         StatRow { label: "VALIDATORS",
                             value: format!("{}", s.validator_count),
                             sub: Some("Active committee".to_string()) }
@@ -384,6 +396,12 @@ fn StatRow(label: String, value: String, sub: Option<String>) -> Element {
                 path { d:"M16 13H8" }
                 path { d:"M16 17H8" }
                 path { d:"M10 9H8" }
+            }
+        },
+        "CONSENSUS ROUND" => rsx! {
+            svg { width:"20", height:"20", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                path { d:"M21 12a9 9 0 1 1-6.219-8.56" }
+                path { d:"M21 3v6h-6" }
             }
         },
         _ => rsx! {
