@@ -102,16 +102,22 @@ pub fn HomePage() -> Element {
             safe_set(txs_loading, true);
             // All three fetch in parallel, same as the initial load — keeps
             // blocks and transactions updating in lockstep on every tick.
-            let (stats_res, blocks_res, txs_res, consensus_res) = futures::join!(
+            let (stats_res, blocks_res, txs_res, consensus_res, epochs_res, consensus_blocks_res) = futures::join!(
                 get_network_stats(),
                 get_latest_blocks(10),
                 get_latest_txs(0, 10),
                 get_consensus_latest(),
+                get_epochs_page(0, 5),
+                get_consensus_blocks(0, 5),
             );
             // Background refresh: on success, update data and clear any stale
             // error banner. On failure, log and silently keep the last-known-good
             // data on screen rather than surfacing a persistent error banner.
             if let Ok(c) = consensus_res { safe_set(consensus_latest, Some(c)); }
+            // Recent Epochs / Recent Consensus panels: keep them in lockstep
+            // with the rest of the page rather than freezing after first load.
+            if let Ok((items, _)) = epochs_res { safe_set(recent_epochs_home, items); }
+            if let Ok((items, _)) = consensus_blocks_res { safe_set(recent_consensus, items); }
             match stats_res {
                 Ok(s)  => { safe_set(stats, Some(s)); safe_set(error, None); safe_set(is_live, true); }
                 Err(e) => {
