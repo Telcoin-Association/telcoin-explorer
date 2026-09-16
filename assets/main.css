@@ -400,7 +400,7 @@ input  { font-family: inherit; }
 }
 .mini-row:last-child { border-bottom: none; }
 .mini-row:hover { background: var(--tel-blue-dim); }
-.mini-row > *:last-child, .mini-row-header > *:last-child { text-align: right; }
+.mini-row > *:last-child, .mini-row-header > *:last-child { text-align: right; padding-right: 8px; }
 
 .hbr-block { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .hbr-icon {
