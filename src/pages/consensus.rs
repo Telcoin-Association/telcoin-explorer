@@ -102,7 +102,9 @@ pub fn ConsensusPage(page: u64) -> Element {
                                 for c in items.read().iter() {
                                     tr {
                                         td { "data-label": "Round",
-                                            span { class: "hash-cell", "#{c.round}" }
+                                            Link { to: Route::ConsensusBlockPage { number: c.number },
+                                                span { class: "hash-cell", "#{c.round}" }
+                                            }
                                         }
                                         td { "data-label": "Epoch",
                                             Link { to: Route::EpochDetailPage { epoch_number: c.epoch as u64 },

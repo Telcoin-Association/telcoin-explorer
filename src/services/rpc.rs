@@ -847,6 +847,94 @@ pub async fn get_consensus_blocks(page: u64, per_page: u64) -> Result<(Vec<Conse
     Ok((env.items, env.total))
 }
 
+/// An inclusive range of execution block numbers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiExecRange {
+    pub first: u64,
+    pub last:  u64,
+}
+/// One (batch digest, worker id) entry of a primary header's payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiPayloadEntry {
+    pub batch_digest: String,
+    pub worker_id:    u16,
+}
+/// One primary header inside a committed sub-dag.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiSubDagHeader {
+    pub digest:                 String,
+    pub author:                  String,
+    pub author_bls:               Option<String>,
+    pub round:                     u32,
+    pub epoch:                     u32,
+    pub created_at:                u64,
+    pub parents:                   Vec<String>,
+    pub payload:                   Vec<ApiPayloadEntry>,
+    pub latest_execution_block:    ApiNumHash,
+    pub is_leader:                 bool,
+}
+/// One authority's reputation score.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiAuthorityScore {
+    pub authority: String,
+    pub score:      u64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiReputationScores {
+    pub scores:            Vec<ApiAuthorityScore>,
+    pub final_of_schedule:  bool,
+}
+/// One batch of a ConsensusOutput.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiConsensusBatch {
+    pub index:              u64,
+    pub digest:               String,
+    pub worker_id:            u16,
+    pub beneficiary:          String,
+    pub authority_address:    String,
+    pub base_fee_per_gas:     u64,
+    pub tx_count:             usize,
+    pub size_bytes:           usize,
+    pub exec_block_number:    Option<u64>,
+    #[serde(default)]
+    pub tx_hashes:            Option<Vec<String>>,
+}
+/// Full consensus header detail (extends the list-only ConsensusHeader with
+/// parent linkage, the leader header digest, randomness, extra data, and the
+/// resolved execution-block range -- present on the detail route only).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiConsensusHeaderFull {
+    pub number:                 u64,
+    pub digest:                  String,
+    pub digest_bs58:             String,
+    pub parent_digest:            String,
+    pub parent_digest_bs58:       String,
+    pub epoch:                     u32,
+    pub round:                      u32,
+    pub leader:                     String,
+    pub leader_header_digest:        String,
+    pub committed_at:                u64,
+    pub sub_dag_header_count:        usize,
+    pub batch_count:                 usize,
+    pub randomness:                  String,
+    pub extra:                       String,
+    pub exec_blocks:                 Option<ApiExecRange>,
+}
+/// `GET /consensus/blocks/{number}` -- a full ConsensusOutput.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiConsensusBlock {
+    pub header:              ApiConsensusHeaderFull,
+    pub leader_bls:           Option<String>,
+    pub sub_dag:              Vec<ApiSubDagHeader>,
+    pub reputation_scores:    ApiReputationScores,
+    pub batches:              Vec<ApiConsensusBatch>,
+    pub closes_epoch:         Option<bool>,
+}
+/// One full consensus round by number (serves the Consensus Block Detail page).
+pub async fn get_consensus_block(number: u64) -> Result<ApiConsensusBlock, String> {
+    indexer_get(&format!("/consensus/blocks/{number}")).await
+}
+
 // ── Epochs ─────────────────────────────────────────────────────────────────────
 /// Single call to /epochs/current — replaces the old ABI-decoded getCurrentEpochInfo().
 pub async fn get_current_epoch_data() -> Result<EpochData, String> {

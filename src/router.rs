@@ -3,6 +3,7 @@ use crate::components::layout::Layout;
 use crate::pages::epochs::EpochsPage;
 use crate::pages::epoch_detail::EpochDetailPage;
 use crate::pages::consensus::ConsensusPage;
+use crate::pages::consensus_block::ConsensusBlockPage;
 use crate::pages::contract::ContractPage;
 use crate::pages::{
     home::HomePage,
@@ -41,6 +42,8 @@ pub enum Route {
         EpochDetailPage { epoch_number: u64 },
         #[route("/consensus/:page")]
         ConsensusPage { page: u64 },
+        #[route("/consensus-block/:number")]
+        ConsensusBlockPage { number: u64 },
         #[route("/contract/:address")]
         ContractPage { address: String },
     #[end_layout]

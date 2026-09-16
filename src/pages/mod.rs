@@ -10,4 +10,5 @@ pub mod token;
 pub mod epochs;
 pub mod epoch_detail;
 pub mod consensus;
+pub mod consensus_block;
 pub mod contract;
