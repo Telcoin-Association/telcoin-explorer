@@ -2,8 +2,8 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_latest_txs,
-    Transaction, shorten_hash, shorten_addr, format_wei_exact,
+    get_latest_txs_filtered,
+    Transaction, shorten_hash, shorten_addr, format_wei_exact, format_tx_type_name,
 };
 use crate::components::loading::{Loading, ErrorBox};
 
@@ -20,14 +20,16 @@ pub fn TransactionsPage(page: u64) -> Element {
     if *current_page.read() != page {
         current_page.set(page);
     }
+    let mut type_filter: Signal<Option<String>> = use_signal(|| None);
 
     use_effect(move || {
         let p = *current_page.read();
+        let filter = type_filter.read().clone();
         txs.set(vec![]);
         loading.set(true);
         error.set(None);
         wasm_bindgen_futures::spawn_local(async move {
-            match get_latest_txs(p, PER_PAGE).await {
+            match get_latest_txs_filtered(p, PER_PAGE, filter.as_deref()).await {
                 Ok((t, tot)) => { txs.set(t); total.set(tot); }
                 Err(e)       => error.set(Some(e)),
             }
@@ -53,6 +55,20 @@ pub fn TransactionsPage(page: u64) -> Element {
                             " of "
                             span { class: "highlight", { format!("{}", total_pages + 1) } }
                         }
+                    }
+                    select {
+                        class: "tx-type-filter",
+                        onchange: move |evt| {
+                            let val = evt.value();
+                            type_filter.set(if val.is_empty() { None } else { Some(val) });
+                            current_page.set(0);
+                        },
+                        option { value: "", "All Types" }
+                        option { value: "legacy", "Legacy" }
+                        option { value: "eip2930", "EIP-2930" }
+                        option { value: "eip1559", "EIP-1559" }
+                        option { value: "eip4844", "EIP-4844" }
+                        option { value: "eip7702", "EIP-7702" }
                     }
                     div { class: "blocks-page-nav",
                         if page > 0 {
@@ -117,6 +133,9 @@ pub fn TransactionsPage(page: u64) -> Element {
                                                 } else {
                                                     rsx! { span { class: "method-badge method-unknown", "Call" } }
                                                 }
+                                            }
+                                            span { class: "chip info", style: "font-size:9px; margin-left:6px; padding:2px 6px;",
+                                                { format_tx_type_name(&tx.tx_type_name) }
                                             }
                                         }
                                         td { "data-label": "Block",

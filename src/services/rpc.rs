@@ -431,6 +431,20 @@ pub fn format_gas(gas: u64) -> String {
     else if gas >= 1_000 { format!("{:.1}K", gas as f64 / 1_000.0) }
     else                 { format!("{gas}") }
 }
+/// Display name for the indexer's `tx_type_name` values ("legacy",
+/// "eip2930", "eip1559", "eip4844", "eip7702") -- capitalized/hyphenated for
+/// UI badges. Unrecognized values pass through as-is (forward-compatible
+/// with a future type the indexer adds before we do).
+pub fn format_tx_type_name(name: &str) -> String {
+    match name {
+        "legacy"  => "Legacy".to_string(),
+        "eip2930" => "EIP-2930".to_string(),
+        "eip1559" => "EIP-1559".to_string(),
+        "eip4844" => "EIP-4844".to_string(),
+        "eip7702" => "EIP-7702".to_string(),
+        other     => other.to_string(),
+    }
+}
 pub fn shorten_hash(h: &str) -> String {
     if h.len() > 12 { format!("{}…{}", &h[..6], &h[h.len()-4..]) }
     else { h.to_string() }
@@ -565,12 +579,24 @@ pub async fn get_transactions_for_block(hashes: &Vec<String>) -> Vec<Transaction
     txs
 }
 pub async fn get_latest_txs(page: u64, per_page: u64) -> Result<(Vec<Transaction>, u64), String> {
-    let env: Envelope<Transaction> = indexer_get(&format!("/txs?page={page}&per_page={per_page}")).await?;
+    get_latest_txs_filtered(page, per_page, None).await
+}
+/// Like [`get_latest_txs`], with an optional `?type=` filter (indexer accepts
+/// the type name -- "legacy"/"eip2930"/"eip1559"/"eip4844"/"eip7702" -- or
+/// the 0-4 byte, case-insensitive).
+pub async fn get_latest_txs_filtered(page: u64, per_page: u64, tx_type: Option<&str>) -> Result<(Vec<Transaction>, u64), String> {
+    let type_param = tx_type.map(|t| format!("&type={t}")).unwrap_or_default();
+    let env: Envelope<Transaction> = indexer_get(&format!("/txs?page={page}&per_page={per_page}{type_param}")).await?;
     Ok((env.items, env.total))
 }
 /// Full transaction history for an address — the big unlock over public RPC (no 5000-block scan limit).
 pub async fn get_address_txs(addr: &str, page: u64, per_page: u64) -> Result<(Vec<Transaction>, u64), String> {
-    let env: Envelope<Transaction> = indexer_get(&format!("/address/{addr}/txs?page={page}&per_page={per_page}")).await?;
+    get_address_txs_filtered(addr, page, per_page, None).await
+}
+/// Like [`get_address_txs`], with an optional `?type=` filter.
+pub async fn get_address_txs_filtered(addr: &str, page: u64, per_page: u64, tx_type: Option<&str>) -> Result<(Vec<Transaction>, u64), String> {
+    let type_param = tx_type.map(|t| format!("&type={t}")).unwrap_or_default();
+    let env: Envelope<Transaction> = indexer_get(&format!("/address/{addr}/txs?page={page}&per_page={per_page}{type_param}")).await?;
     Ok((env.items, env.total))
 }
 

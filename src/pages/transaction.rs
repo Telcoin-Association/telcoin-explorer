@@ -4,7 +4,8 @@ use crate::router::Route;
 use crate::services::rpc::{
     get_tx_receipt_status, get_transaction, get_block_by_number,
     Transaction, format_wei_exact, shorten_hash, shorten_addr,
-    unix_to_age, unix_to_datetime, format_transfer_amount, is_native_tel_transfer};
+    unix_to_age, unix_to_datetime, format_transfer_amount, is_native_tel_transfer,
+    format_tx_type_name};
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
@@ -210,6 +211,14 @@ pub fn TransactionPage(hash: String) -> Element {
                                 div { class: "detail-row",
                                     div { class: "detail-key", "Position in Block" }
                                     div { class: "detail-val", "{idx}" }
+                                }
+                            }
+                            div { class: "detail-row",
+                                div { class: "detail-key", "Transaction Type" }
+                                div { class: "detail-val",
+                                    span { class: "chip info", style: "font-size:11px;",
+                                        { format_tx_type_name(&t.tx_type_name) }
+                                    }
                                 }
                             }
                         }

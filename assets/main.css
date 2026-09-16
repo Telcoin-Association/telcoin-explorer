@@ -507,6 +507,13 @@ input  { font-family: inherit; }
 .blocks-inner { max-width: var(--W); margin: 0 auto; padding: 28px var(--PAD); }
 .blocks-page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
 .blocks-page-nav { display: flex; align-items: center; gap: 8px; }
+.tx-type-filter {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-size: 13px; font-weight: 500; padding: 7px 12px;
+  cursor: pointer; transition: border-color 0.15s;
+}
+.tx-type-filter:hover, .tx-type-filter:focus { border-color: var(--tel-blue); outline: none; }
 .blocks-pagination { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 0; flex-wrap: wrap; }
 .page-btn-link { display: inline-flex; align-items: center; padding: 6px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 13px; font-weight: 500; transition: all 0.15s; cursor: pointer; text-decoration: none; }
 .page-btn-link:hover { border-color: var(--tel-blue); color: var(--tel-blue); background: var(--tel-blue-dim); }
