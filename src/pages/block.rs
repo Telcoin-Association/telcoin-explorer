@@ -164,6 +164,23 @@ pub fn BlockPage(block_number: u64) -> Element {
                                 }
                             }
                         }
+                        if let Some(c) = &b.consensus {
+                            div { class: "detail-row",
+                                div { class: "detail-key", "Consensus Round" }
+                                div { class: "detail-val",
+                                    span { "Epoch #{c.epoch} · Round #{c.round}" }
+                                    if c.closes_epoch {
+                                        span { class: "chip success", style: "margin-left:8px; font-size:10px;", "Closes Epoch" }
+                                    }
+                                }
+                            }
+                            if let Some(cn) = c.consensus_number {
+                                div { class: "detail-row",
+                                    div { class: "detail-key", "Consensus Block" }
+                                    div { class: "detail-val", "#{cn}" }
+                                }
+                            }
+                        }
                         div { class: "detail-row",
                             div { class: "detail-key", "Block Leader" }
                             div { class: "detail-val",

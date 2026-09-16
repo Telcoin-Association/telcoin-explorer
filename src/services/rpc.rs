@@ -49,6 +49,28 @@ pub struct Block {
     pub extra_data:        String,
     pub base_fee:          Option<u64>,
     pub size:              u64,
+    /// Consensus provenance decoded purely from the execution header
+    /// (present on both list and detail routes). `None` only for genesis,
+    /// which no consensus output produced.
+    #[serde(default)]
+    pub consensus:         Option<BlockConsensus>,
+}
+/// Which consensus round/output produced an execution block -- see
+/// `ApiBlockConsensus` in the indexer. `consensus_number` (the actual
+/// consensus block this came from) is resolved server-side only on
+/// `/blocks/{number}` (detail), so it's `None` on list rows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockConsensus {
+    pub digest:           String,
+    pub digest_bs58:       String,
+    pub epoch:             u32,
+    pub round:              u32,
+    pub batch_index:        u64,
+    pub worker_id:          u16,
+    pub batch_digest:       String,
+    pub prev_randao:        Option<String>,
+    pub closes_epoch:       bool,
+    pub consensus_number:   Option<u64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecodedInput {
