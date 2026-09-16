@@ -3,8 +3,10 @@ use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     get_latest_blocks, get_network_stats, get_latest_txs, get_consensus_latest,
+    get_epochs_page, get_consensus_blocks,
     Transaction,
-    Block, NetworkStats, ConsensusLatest, shorten_hash, shorten_addr, unix_to_age, format_gas, format_wei_exact,
+    Block, NetworkStats, ConsensusLatest, ApiEpoch, ConsensusHeader,
+    shorten_hash, shorten_addr, unix_to_age, format_gas, format_wei_exact,
 };
 use crate::components::loading::{Loading, ErrorBox};
 use crate::services::rpc::add_thousands_separators;
@@ -25,6 +27,8 @@ pub fn HomePage() -> Element {
     let mut blocks: Signal<Vec<Block>>           = use_signal(|| vec![]);
     let mut stats:  Signal<Option<NetworkStats>> = use_signal(|| None);
     let mut consensus_latest: Signal<Option<ConsensusLatest>> = use_signal(|| None);
+    let mut recent_epochs_home: Signal<Vec<ApiEpoch>>        = use_signal(|| vec![]);
+    let mut recent_consensus:   Signal<Vec<ConsensusHeader>> = use_signal(|| vec![]);
     let mut loading                              = use_signal(|| true);
     let mut error: Signal<Option<String>>        = use_signal(|| None);
     let mut last_updated: Signal<String>         = use_signal(|| "".to_string());
@@ -70,6 +74,25 @@ pub fn HomePage() -> Element {
             last_updated.set(format!("{:02}:{:02}:{:02}",
                 now.get_hours(), now.get_minutes(), now.get_seconds()));
             loading.set(false);
+        });
+    });
+
+    // Independent, fetch-once-on-mount effects for the "Recent Epochs" and
+    // "Recent Consensus" panels below -- these are a periodic glance, not a
+    // live ticker (the Consensus Round stat card above already covers that),
+    // so they don't need to join the 30s blocks/txs refresh loop.
+    use_effect(move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok((items, _total)) = get_epochs_page(0, 5).await {
+                recent_epochs_home.set(items);
+            }
+        });
+    });
+    use_effect(move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok((items, _total)) = get_consensus_blocks(0, 5).await {
+                recent_consensus.set(items);
+            }
         });
     });
 
@@ -355,6 +378,91 @@ pub fn HomePage() -> Element {
                             div { class: "panel-footer",
                                 Link { to: Route::TransactionsPage { page: 0 }, class: "panel-view-all-footer",
                                     "View All Transactions →"
+                                }
+                            }
+                        }
+                    }
+                    // ── Recent Epochs ─────────────────────
+                    div { class: "panel",
+                        div { class: "panel-header",
+                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none",
+                                stroke:"var(--tel-blue)", stroke_width:"1.5",
+                                stroke_linecap:"round", stroke_linejoin:"round",
+                                circle { cx:"12", cy:"12", r:"10" }
+                                path { d:"M12 6v6l4 2" }
+                            }
+                            span { class: "panel-title", "Recent Epochs" }
+                        }
+                        if recent_epochs_home.read().is_empty() {
+                            Loading { msg: Some("Loading epochs…".to_string()) }
+                        } else {
+                            div { class: "mini-row-header",
+                                span { "EPOCH" }
+                                span { "STATUS" }
+                                span { "BLOCK RANGE" }
+                                span { "COMMITTEE" }
+                            }
+                            for ep in recent_epochs_home.read().iter() {
+                                div { class: "mini-row",
+                                    Link { to: Route::EpochDetailPage { epoch_number: ep.epoch },
+                                        span { class: "hash-cell", "#{ep.epoch}" }
+                                    }
+                                    span {
+                                        if ep.is_current {
+                                            span { class: "chip pending", style:"font-size:10px;", "Live" }
+                                        } else if ep.certified {
+                                            span { class: "chip success", style:"font-size:10px;", "Certified" }
+                                        } else {
+                                            span { class: "chip failed", style:"font-size:10px;", "Uncertified" }
+                                        }
+                                    }
+                                    span { style: "font-size:12px; color:var(--text-secondary);",
+                                        if let Some(end) = ep.end_block {
+                                            { format!("#{} – #{}", ep.start_block, end) }
+                                        } else {
+                                            { format!("#{} – …", ep.start_block) }
+                                        }
+                                    }
+                                    span { style: "font-size:12px; color:var(--text-secondary);", "{ep.committee_size}" }
+                                }
+                            }
+                            div { class: "panel-footer",
+                                Link { to: Route::EpochsPage {}, class: "panel-view-all-footer",
+                                    "View Epochs →"
+                                }
+                            }
+                        }
+                    }
+                    // ── Recent Consensus ─────────────────
+                    div { class: "panel",
+                        div { class: "panel-header",
+                            svg { width:"18", height:"18", view_box:"0 0 24 24", fill:"none",
+                                stroke:"var(--tel-blue)", stroke_width:"1.5",
+                                stroke_linecap:"round", stroke_linejoin:"round",
+                                path { d:"M21 12a9 9 0 1 1-6.219-8.56" }
+                                path { d:"M21 3v6h-6" }
+                            }
+                            span { class: "panel-title", "Recent Consensus" }
+                        }
+                        if recent_consensus.read().is_empty() {
+                            Loading { msg: Some("Loading consensus rounds…".to_string()) }
+                        } else {
+                            div { class: "mini-row-header",
+                                span { "ROUND" }
+                                span { "EPOCH" }
+                                span { "LEADER" }
+                                span { "BATCHES" }
+                            }
+                            for c in recent_consensus.read().iter() {
+                                div { class: "mini-row",
+                                    span { class: "hash-cell", "#{c.round}" }
+                                    span { style: "font-size:12px; color:var(--text-secondary);", "#{c.epoch}" }
+                                    span { class: "hash-cell", style: "font-size:11px;", "{shorten_addr(&c.leader)}" }
+                                    if c.batch_count > 0 {
+                                        span { class: "tx-badge", "{c.batch_count}" }
+                                    } else {
+                                        span { style: "color:var(--text-muted); font-size:12px;", "—" }
+                                    }
                                 }
                             }
                         }

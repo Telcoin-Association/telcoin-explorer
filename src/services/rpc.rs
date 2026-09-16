@@ -826,6 +826,27 @@ pub async fn get_consensus_latest() -> Result<ConsensusLatest, String> {
     indexer_get("/consensus/latest").await
 }
 
+/// One row of the consensus-round feed (`/consensus/blocks`) -- lighter than
+/// a full ConsensusOutput (no sub-dag headers/batches), used for lists.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsensusHeader {
+    pub number:              u64,
+    pub digest:               String,
+    pub digest_bs58:          String,
+    pub epoch:                u32,
+    pub round:                u32,
+    pub leader:                String,
+    pub committed_at:          u64,
+    pub sub_dag_header_count:  usize,
+    pub batch_count:           usize,
+}
+/// Newest-first page of consensus rounds (serves the home-page "Recent
+/// Consensus" panel and, later, a full Consensus list page).
+pub async fn get_consensus_blocks(page: u64, per_page: u64) -> Result<(Vec<ConsensusHeader>, u64), String> {
+    let env: Envelope<ConsensusHeader> = indexer_get(&format!("/consensus/blocks?page={page}&per_page={per_page}")).await?;
+    Ok((env.items, env.total))
+}
+
 // ── Epochs ─────────────────────────────────────────────────────────────────────
 /// Single call to /epochs/current — replaces the old ABI-decoded getCurrentEpochInfo().
 pub async fn get_current_epoch_data() -> Result<EpochData, String> {

@@ -366,6 +366,30 @@ input  { font-family: inherit; }
 }
 .home-block-row:last-child { border-bottom: none; }
 .home-block-row:hover { background: var(--tel-blue-dim); }
+/* Compact flex-based rows for the home-page Recent Epochs / Recent
+   Consensus panels -- simpler than .home-block-row's fixed pixel-width
+   grid (built specifically for Block/Age/Txns/Gas/Leader columns), since
+   these panels show different, differently-proportioned content. */
+/* Grid (not flex) so header labels and row content share the EXACT same
+   column boundaries regardless of each column's natural content width. */
+.mini-row-header, .mini-row {
+  display: grid;
+  grid-template-columns: 70px 110px 1fr 90px;
+  align-items: center; gap: 8px;
+}
+.mini-row-header {
+  padding: 8px 20px;
+  font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.03em; border-bottom: 1px solid var(--border-subtle);
+}
+.mini-row {
+  padding: 10px 20px; border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s;
+}
+.mini-row:last-child { border-bottom: none; }
+.mini-row:hover { background: var(--tel-blue-dim); }
+.mini-row > *:last-child, .mini-row-header > *:last-child { text-align: right; }
+
 .hbr-block { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .hbr-icon {
   width: 22px; height: 22px; border-radius: 5px;
@@ -808,6 +832,7 @@ input  { font-family: inherit; }
 
   /* Panels */
   .dual-col { grid-template-columns: 1fr; }
+  .mini-row-header, .mini-row { grid-template-columns: 50px 70px 1fr 55px; padding-left: 12px; padding-right: 12px; font-size: 11px; }
   .page { padding: 16px var(--PAD); }
   .blocks-inner { padding: 16px var(--PAD); }
 
