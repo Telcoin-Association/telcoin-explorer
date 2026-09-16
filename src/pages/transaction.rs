@@ -1,8 +1,9 @@
 // src/pages/transaction.rs
 use dioxus::prelude::*;
 use crate::router::Route;
+use std::collections::HashMap;
 use crate::services::rpc::{
-    get_tx_receipt_status, get_transaction, get_block_by_number,
+    get_tx_receipt_status, get_transaction, get_block_by_number, get_registered_tokens,
     Transaction, format_wei_exact, shorten_hash, shorten_addr,
     unix_to_age, unix_to_datetime, format_transfer_amount, is_native_tel_transfer,
     format_tx_type_name};
@@ -16,6 +17,7 @@ pub fn TransactionPage(hash: String) -> Element {
     let mut tx_success: Signal<Option<bool>> = use_signal(|| None);
     let mut input_expanded = use_signal(|| false);
     let mut block_timestamp: Signal<Option<u64>> = use_signal(|| None);
+    let mut token_logos: Signal<HashMap<String, String>> = use_signal(|| HashMap::new());
     // use_reactive: `hash` is a plain String prop, not a Signal, so without
     // this the effect only runs once on first mount and never restarts when
     // navigating between two TransactionPage instances via Link (Dioxus
@@ -25,6 +27,16 @@ pub fn TransactionPage(hash: String) -> Element {
     let mut tx      = tx.clone();
     let mut loading = loading.clone();
     let mut error   = error.clone();
+    use_effect(move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            let tokens = get_registered_tokens().await;
+            let map: HashMap<String, String> = tokens.into_iter()
+                .filter(|t| !t.logo_uri.is_empty())
+                .map(|t| (t.address.to_lowercase(), t.logo_uri))
+                .collect();
+            token_logos.set(map);
+        });
+    });
     use_effect(use_reactive(&hash, move |hash| {
         // Clear stale data from any previously-viewed transaction immediately.
         tx.set(None);
@@ -143,6 +155,17 @@ pub fn TransactionPage(hash: String) -> Element {
                                                     span { class: "chip success", style: "font-size:11px;", "TEL" }
                                                 } else {
                                                     Link { to: Route::TokenPage { address: transfer.token_address.clone() },
+                                                        style: "display:flex; align-items:center; gap:4px;",
+                                                        if let Some(logo) = token_logos.read().get(&transfer.token_address.to_lowercase()) {
+                                                            img { src: "{logo}", class: "token-logo-mini", alt: "" }
+                                                        } else {
+                                                            svg { class: "token-logo-mini", view_box: "0 0 24 24", fill: "none",
+                                                                stroke: "currentColor", stroke_width: "2",
+                                                                circle { cx: "12", cy: "12", r: "10" }
+                                                                path { d: "M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" }
+                                                                circle { cx: "12", cy: "16.5", r: "0.1", fill: "currentColor" }
+                                                            }
+                                                        }
                                                         span { class: "chip info", style: "font-size:11px;",
                                                             if !transfer.token_symbol.is_empty() { "{transfer.token_symbol}" } else { "{shorten_addr(&transfer.token_address)}" }
                                                         }
