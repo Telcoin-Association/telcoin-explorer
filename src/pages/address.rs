@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     is_contract,
-    get_balance_wei, get_tx_count, get_address_txs, get_address_transfers,
+    get_balance_wei, get_tx_count, get_address_txs, get_address_txs_filtered, get_address_transfers,
     TokenTransfer, Transaction, shorten_hash, shorten_addr, format_wei_exact, format_wei_exact_commas,
     format_transfer_amount, transfer_amount_raw_str, is_native_tel_transfer,
     CONSENSUS_REGISTRY,
@@ -96,6 +96,7 @@ pub fn AddressPage(address: String) -> Element {
     let mut transfers_more_loading                = use_signal(|| false);
     let mut txs_export_loading                    = use_signal(|| false);
     let mut transfers_export_loading              = use_signal(|| false);
+    let mut type_filter: Signal<Option<String>>   = use_signal(|| None);
 
     // use_reactive is required here: `address` is a plain String prop, not a
     // Signal, so without it this effect only runs once on first mount and
@@ -145,14 +146,38 @@ pub fn AddressPage(address: String) -> Element {
         let address = address.clone();
         move |_| {
             let address = address.clone();
+            let filter = type_filter.read().clone();
             wasm_bindgen_futures::spawn_local(async move {
                 txs_more_loading.set(true);
                 let next = *txs_page.read() + 1;
-                if let Ok((mut more, _)) = get_address_txs(&address, next, 25).await {
+                if let Ok((mut more, _)) = get_address_txs_filtered(&address, next, 25, filter.as_deref()).await {
                     native_txs.write().append(&mut more);
                     txs_page.set(next);
                 }
                 txs_more_loading.set(false);
+            });
+        }
+    };
+    // Filter changes are handled independently of the address-navigation
+    // effect above (keyed via use_reactive(&address, ...), which should only
+    // react to address changes, not the filter) -- a plain onchange handler
+    // avoids any ambiguity about what triggers a refetch.
+    let on_type_change = {
+        let address = address.clone();
+        move |evt: Event<FormData>| {
+            let val = evt.value();
+            let new_filter = if val.is_empty() { None } else { Some(val) };
+            type_filter.set(new_filter.clone());
+            let address = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                txs_loading.set(true);
+                native_txs.set(vec![]);
+                txs_page.set(0);
+                if let Ok((txs, total)) = get_address_txs_filtered(&address, 0, 25, new_filter.as_deref()).await {
+                    native_txs.set(txs);
+                    txs_total.set(total);
+                }
+                txs_loading.set(false);
             });
         }
     };
@@ -300,6 +325,17 @@ pub fn AddressPage(address: String) -> Element {
                             div { style: "display:flex; align-items:center; gap:12px;",
                                 span { style: "color:var(--text-muted); font-size:11px;",
                                     { format!("{} total", txs_total.read()) }
+                                }
+                                select {
+                                    class: "tx-type-filter",
+                                    style: "padding:4px 10px; font-size:11px;",
+                                    onchange: on_type_change,
+                                    option { value: "", "All Types" }
+                                    option { value: "legacy", "Legacy" }
+                                    option { value: "eip2930", "EIP-2930" }
+                                    option { value: "eip1559", "EIP-1559" }
+                                    option { value: "eip4844", "EIP-4844" }
+                                    option { value: "eip7702", "EIP-7702" }
                                 }
                                 if *txs_total.read() > 0 {
                                     button {
