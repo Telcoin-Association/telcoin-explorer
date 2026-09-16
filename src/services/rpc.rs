@@ -935,6 +935,18 @@ pub async fn get_consensus_block(number: u64) -> Result<ApiConsensusBlock, Strin
     indexer_get(&format!("/consensus/blocks/{number}")).await
 }
 
+/// `GET /consensus/blocks/{number}/batches` -- the same output rendered as
+/// batches WITH per-transaction hashes (absent from the plain detail route).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiConsensusBatches {
+    pub number:   u64,
+    pub digest:    String,
+    pub batches:   Vec<ApiConsensusBatch>,
+}
+pub async fn get_consensus_block_batches(number: u64) -> Result<ApiConsensusBatches, String> {
+    indexer_get(&format!("/consensus/blocks/{number}/batches")).await
+}
+
 // ── Epochs ─────────────────────────────────────────────────────────────────────
 /// Single call to /epochs/current — replaces the old ABI-decoded getCurrentEpochInfo().
 pub async fn get_current_epoch_data() -> Result<EpochData, String> {

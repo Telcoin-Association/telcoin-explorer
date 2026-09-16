@@ -2,25 +2,39 @@
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
-    get_consensus_block,
-    ApiConsensusBlock, shorten_addr, unix_to_age, unix_to_datetime,
+    get_consensus_block, get_consensus_block_batches,
+    ApiConsensusBlock, ApiConsensusBatch, shorten_addr, shorten_hash, unix_to_age, unix_to_datetime,
 };
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
 pub fn ConsensusBlockPage(number: u64) -> Element {
     let mut block: Signal<Option<ApiConsensusBlock>> = use_signal(|| None);
+    let mut batches_full: Signal<Vec<ApiConsensusBatch>> = use_signal(|| vec![]);
+    let mut expanded_batch: Signal<Option<u64>> = use_signal(|| None);
     let mut loading = use_signal(|| true);
     let mut error: Signal<Option<String>> = use_signal(|| None);
 
     use_effect(use_reactive(&number, move |number| {
         block.set(None);
+        batches_full.set(vec![]);
+        expanded_batch.set(None);
         error.set(None);
         wasm_bindgen_futures::spawn_local(async move {
             loading.set(true);
-            match get_consensus_block(number).await {
+            let (block_res, batches_res) = futures::join!(
+                get_consensus_block(number),
+                get_consensus_block_batches(number),
+            );
+            match block_res {
                 Ok(b) => block.set(Some(b)),
                 Err(e) => error.set(Some(e)),
+            }
+            // Best-effort: the plain detail fetch already has batch summaries,
+            // so a failure here just means "no tx hashes to expand" rather
+            // than blocking the page.
+            if let Ok(full) = batches_res {
+                batches_full.set(full.batches);
             }
             loading.set(false);
         });
@@ -141,9 +155,9 @@ pub fn ConsensusBlockPage(number: u64) -> Element {
                 }
 
                 // Batches panel
-                if !b.batches.is_empty() {
+                if !batches_full.read().is_empty() {
                     div { class: "detail-panel", style: "margin-bottom:20px;",
-                        div { class: "detail-panel-title", { format!("Batches ({})", b.batches.len()) } }
+                        div { class: "detail-panel-title", { format!("Batches ({})", batches_full.read().len()) } }
                         div { class: "table-wrapper",
                             table { class: "tx-table",
                                 thead {
@@ -153,26 +167,59 @@ pub fn ConsensusBlockPage(number: u64) -> Element {
                                         th { "TXNS" }
                                         th { "SIZE" }
                                         th { "EXEC BLOCK" }
+                                        th { "" }
                                     }
                                 }
                                 tbody {
-                                    for batch in b.batches.iter() {
-                                        tr {
-                                            td { class: "td-faint", "{batch.index}" }
-                                            td {
-                                                Link { to: Route::AddressPage { address: batch.authority_address.clone() },
-                                                    span { class: "hash-cell addr-short", "{shorten_addr(&batch.authority_address)}" }
-                                                }
-                                            }
-                                            td { class: "td-mono", "{batch.tx_count}" }
-                                            td { class: "td-mono td-faint", "{batch.size_bytes} bytes" }
-                                            td {
-                                                if let Some(n) = batch.exec_block_number {
-                                                    Link { to: Route::BlockPage { block_number: n },
-                                                        span { class: "hash-cell", "#{n}" }
+                                    for batch in batches_full.read().iter() {
+                                        {
+                                            let idx = batch.index;
+                                            let is_open = *expanded_batch.read() == Some(idx);
+                                            let hashes = batch.tx_hashes.clone().unwrap_or_default();
+                                            rsx! {
+                                                tr {
+                                                    td { class: "td-faint", "{batch.index}" }
+                                                    td {
+                                                        Link { to: Route::AddressPage { address: batch.authority_address.clone() },
+                                                            span { class: "hash-cell addr-short", "{shorten_addr(&batch.authority_address)}" }
+                                                        }
                                                     }
-                                                } else {
-                                                    span { class: "td-faint", "pending" }
+                                                    td { class: "td-mono", "{batch.tx_count}" }
+                                                    td { class: "td-mono td-faint", "{batch.size_bytes} bytes" }
+                                                    td {
+                                                        if let Some(n) = batch.exec_block_number {
+                                                            Link { to: Route::BlockPage { block_number: n },
+                                                                span { class: "hash-cell", "#{n}" }
+                                                            }
+                                                        } else {
+                                                            span { class: "td-faint", "pending" }
+                                                        }
+                                                    }
+                                                    td {
+                                                        if batch.tx_count > 0 {
+                                                            button {
+                                                                class: "action-link",
+                                                                style: "background:none; border:none; cursor:pointer; padding:0; font-size:12px;",
+                                                                onclick: move |_| {
+                                                                    expanded_batch.set(if is_open { None } else { Some(idx) });
+                                                                },
+                                                                if is_open { "Hide" } else { "Txns" }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                if is_open {
+                                                    tr {
+                                                        td { colspan: "6", style: "background:var(--bg-base);",
+                                                            div { style: "display:flex; flex-direction:column; gap:4px; padding:8px 4px;",
+                                                                for hash in hashes.iter() {
+                                                                    Link { to: Route::TransactionPage { hash: hash.clone() },
+                                                                        span { class: "hash-cell", style: "font-size:12px;", "{shorten_hash(hash)}" }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
