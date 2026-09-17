@@ -224,11 +224,22 @@ pub fn SearchBox(id: String, placeholder: String, is_hero: bool) -> Element {
                             let href = format!("/token/{}", t.address);
                             let symbol = t.symbol.clone();
                             let name = t.name.clone();
+                            let logo_uri = t.logo_uri.clone();
                             rsx! {
-                                div { class: "search-dropdown-item", style: "cursor:pointer;",
+                                div { class: "search-dropdown-item", style: "cursor:pointer; display:flex; align-items:center; gap:8px;",
                                     onclick: move |_| {
                                         if let Some(w) = web_sys::window() { let _ = w.location().set_href(&href); }
                                     },
+                                    if !logo_uri.is_empty() {
+                                        img { src: "{logo_uri}", class: "token-logo-mini", alt: "" }
+                                    } else {
+                                        svg { class: "token-logo-mini", view_box: "0 0 24 24", fill: "none",
+                                            stroke: "currentColor", stroke_width: "2",
+                                            circle { cx: "12", cy: "12", r: "10" }
+                                            path { d: "M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" }
+                                            circle { cx: "12", cy: "16.5", r: "0.1", fill: "currentColor" }
+                                        }
+                                    }
                                     span { class: "chip info", style: "font-size:10px; padding:2px 7px;", "{symbol}" }
                                     span { "{name}" }
                                 }

@@ -1,13 +1,16 @@
 // src/pages/address.rs
+use std::collections::HashMap;
 use dioxus::prelude::*;
 use crate::router::Route;
 use crate::services::rpc::{
     is_contract,
     get_balance_wei, get_tx_count, get_address_txs, get_address_txs_filtered, get_address_transfers,
+    get_registered_tokens,
     TokenTransfer, Transaction, shorten_hash, shorten_addr, format_wei_exact, format_wei_exact_commas,
     format_transfer_amount, transfer_amount_raw_str, is_native_tel_transfer,
     CONSENSUS_REGISTRY,
 };
+const TEL_LOGO: Asset = asset!("/assets/telcoin-logo.svg");
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 /// Escape a value for a CSV field: wrap in quotes and double any internal quotes.
@@ -96,6 +99,7 @@ pub fn AddressPage(address: String) -> Element {
     let mut transfers_more_loading                = use_signal(|| false);
     let mut txs_export_loading                    = use_signal(|| false);
     let mut transfers_export_loading              = use_signal(|| false);
+    let mut token_logos: Signal<HashMap<String, String>> = use_signal(|| HashMap::new());
     let mut type_filter: Signal<Option<String>>   = use_signal(|| None);
 
     // use_reactive is required here: `address` is a plain String prop, not a
@@ -162,6 +166,18 @@ pub fn AddressPage(address: String) -> Element {
     // effect above (keyed via use_reactive(&address, ...), which should only
     // react to address changes, not the filter) -- a plain onchange handler
     // avoids any ambiguity about what triggers a refetch.
+        // Token registry logos (address -> logo_uri), fetched once -- the
+    // registry changes rarely, no need to refetch per address navigation.
+    use_effect(move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            let tokens = get_registered_tokens().await;
+            let map: HashMap<String, String> = tokens.into_iter()
+                .filter(|t| !t.logo_uri.is_empty())
+                .map(|t| (t.address.to_lowercase(), t.logo_uri))
+                .collect();
+            token_logos.set(map);
+        });
+    });
     let on_type_change = {
         let address = address.clone();
         move |evt: Event<FormData>| {
@@ -515,9 +531,22 @@ pub fn AddressPage(address: String) -> Element {
                                                 }
                                                 td { "data-label": "Token",
                                                     if is_native_tel_transfer(&transfer.token_address) {
-                                                        span { class: "chip success", style: "font-size:11px;", "TEL" }
+                                                        span { style: "display:inline-flex; align-items:center; gap:6px;",
+                                                            img { src: TEL_LOGO, alt: "TEL", style: "width:14px; height:14px; flex-shrink:0;" }
+                                                            span { class: "chip info", style: "font-size:11px;", "TEL" }
+                                                        }
                                                     } else if !transfer.token_symbol.is_empty() {
-                                                        Link { to: Route::TokenPage { address: transfer.token_address.clone() },
+                                                        Link { to: Route::TokenPage { address: transfer.token_address.clone() }, style: "display:inline-flex; align-items:center; gap:4px;",
+                                                            if let Some(logo) = token_logos.read().get(&transfer.token_address.to_lowercase()) {
+                                                                img { src: "{logo}", class: "token-logo-mini", alt: "" }
+                                                            } else {
+                                                                svg { class: "token-logo-mini", view_box: "0 0 24 24", fill: "none",
+                                                                    stroke: "currentColor", stroke_width: "2",
+                                                                    circle { cx: "12", cy: "12", r: "10" }
+                                                                    path { d: "M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" }
+                                                                    circle { cx: "12", cy: "16.5", r: "0.1", fill: "currentColor" }
+                                                                }
+                                                            }
                                                             span { class: "chip info", style: "font-size:11px;", "{transfer.token_symbol}" }
                                                         }
                                                     } else {

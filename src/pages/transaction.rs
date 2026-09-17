@@ -7,6 +7,7 @@ use crate::services::rpc::{
     Transaction, format_wei_exact, shorten_hash, shorten_addr,
     unix_to_age, unix_to_datetime, format_transfer_amount, is_native_tel_transfer,
     format_tx_type_name};
+const TEL_LOGO: Asset = asset!("/assets/telcoin-logo.svg");
 use crate::components::loading::{Loading, ErrorBox, CopyButton};
 
 #[component]
@@ -152,7 +153,10 @@ pub fn TransactionPage(hash: String) -> Element {
                                         for transfer in t.token_transfers.as_deref().unwrap_or(&[]).iter() {
                                             div { style: "display:flex; align-items:center; gap:8px; flex-wrap:wrap;",
                                                 if is_native_tel_transfer(&transfer.token_address) {
-                                                    span { class: "chip success", style: "font-size:11px;", "TEL" }
+                                                    span { style: "display:inline-flex; align-items:center; gap:6px;",
+                                                        img { src: TEL_LOGO, alt: "TEL", style: "width:14px; height:14px; flex-shrink:0;" }
+                                                        span { class: "chip info", style: "font-size:11px;", "TEL" }
+                                                    }
                                                 } else {
                                                     Link { to: Route::TokenPage { address: transfer.token_address.clone() },
                                                         style: "display:flex; align-items:center; gap:4px;",
