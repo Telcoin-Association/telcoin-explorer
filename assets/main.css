@@ -93,8 +93,8 @@ input  { font-family: inherit; }
 .logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .logo-img { width: 36px; height: 36px; }
 .logo-text-wrap { display: flex; flex-direction: column; }
-.logo-name { font-size: 16px; font-weight: 800; color: var(--text-primary); line-height: 1; }
-.logo-badge { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--tel-blue); }
+.logo-name { font-size: 16px; font-weight: 800; color: var(--text-primary); line-height: 1; white-space: nowrap; }
+.logo-badge { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--tel-blue); white-space: nowrap; }
 
 .desktop-nav { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .header-nav-link, .header-nav a {
@@ -128,7 +128,7 @@ input  { font-family: inherit; }
 
 /* ── HEADER SEARCH ────────────────────────────────────────────────── */
 .header-search-box {
-  display: flex; align-items: stretch; flex: 0 1 480px; min-width: 0;
+  display: flex; align-items: stretch; flex: 1 1 480px; max-width: 600px; min-width: 0; margin-left: 32px;
   background: rgba(255,255,255,0.05); border: 1px solid var(--border-mid);
   border-radius: var(--radius-sm); overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
