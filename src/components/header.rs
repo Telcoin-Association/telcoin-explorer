@@ -42,6 +42,25 @@ pub fn Header() -> Element {
     // Check current route to hide search on home page
     let route: Route = use_route();
     let is_home = matches!(route, Route::HomePage {});
+    // Which top-level nav section the current route belongs to, for the
+    // active-page indicator (matches on route variant, ignoring params --
+    // e.g. any BlocksPage page number or a BlockPage detail counts as
+    // "blocks" active).
+    let active_section: &str = match route {
+        Route::HomePage {} => "home",
+        Route::BlocksPage { .. } | Route::BlockPage { .. } => "blocks",
+        Route::TransactionsPage { .. } | Route::TransactionPage { .. } => "txs",
+        Route::EpochsPage {} | Route::EpochDetailPage { .. } => "epochs",
+        Route::ConsensusPage { .. } | Route::ConsensusBlockPage { .. } => "consensus",
+        Route::ValidatorsPage {} => "validators",
+        _ => "",
+    };
+    let nav_class = |section: &str| -> String {
+        if section == active_section { "header-nav-link active".to_string() } else { "header-nav-link".to_string() }
+    };
+    let mobile_nav_class = |section: &str| -> String {
+        if section == active_section { "mobile-nav-link active".to_string() } else { "mobile-nav-link".to_string() }
+    };
 
     // Restore wallet from localStorage on mount
     use_effect(move || {
@@ -132,12 +151,68 @@ pub fn Header() -> Element {
 
                 // ── Desktop nav ───────────────────────────────────────
                 nav { class: "header-nav desktop-nav",
-                    Link { to: Route::HomePage {},               class: "header-nav-link", "Home" }
-                    Link { to: Route::BlocksPage { page: 0 },   class: "header-nav-link", "Blocks" }
-                    Link { to: Route::TransactionsPage { page: 0 }, class: "header-nav-link", "Transactions" }
-                    Link { to: Route::EpochsPage {},             class: "header-nav-link", "Epochs" }
-                    Link { to: Route::ConsensusPage { page: 0 }, class: "header-nav-link", "Consensus" }
-                    Link { to: Route::ValidatorsPage {},         class: "header-nav-link", "Validators" }
+                    Link { to: Route::HomePage {}, class: nav_class("home"),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }
+                            path { d:"M9 22V12h6v10" }
+                        }
+                        "Home"
+                    }
+                    Link { to: Route::BlocksPage { page: 0 }, class: nav_class("blocks"),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }
+                            path { d:"M3.27 6.96 12 12.01l8.73-5.05" }
+                            path { d:"M12 22.08V12" }
+                        }
+                        "Blocks"
+                    }
+                    Link { to: Route::TransactionsPage { page: 0 }, class: nav_class("txs"),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }
+                            path { d:"M14 2v6h6" }
+                            path { d:"M16 13H8" }
+                            path { d:"M16 17H8" }
+                            path { d:"M10 9H8" }
+                        }
+                        "Transactions"
+                    }
+                    Link { to: Route::EpochsPage {}, class: nav_class("epochs"),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            circle { cx:"12", cy:"12", r:"10" }
+                            path { d:"M12 6v6l4 2" }
+                        }
+                        "Epochs"
+                    }
+                    Link { to: Route::ConsensusPage { page: 0 }, class: nav_class("consensus"),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M21 12a9 9 0 1 1-6.219-8.56" }
+                            path { d:"M21 3v6h-6" }
+                        }
+                        "Consensus"
+                    }
+                    Link { to: Route::ValidatorsPage {}, class: nav_class("validators"),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }
+                            circle { cx:"9", cy:"7", r:"4" }
+                            path { d:"M23 21v-2a4 4 0 0 0-3-3.87" }
+                            path { d:"M16 3.13a4 4 0 0 1 0 7.75" }
+                        }
+                        "Validators"
+                    }
+
+                    div { class: "nav-divider" }
+
+                    a {
+                        class: "header-nav-faucet",
+                        href: "https://www.telcoin.network/faucet",
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        title: "Claim testnet TEL",
+                        svg { width:"13", height:"13", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M12 2.69s-5.5 5.79-5.5 10.31a5.5 5.5 0 0 0 11 0c0-4.52-5.5-10.31-5.5-10.31z" }
+                        }
+                        "Faucet"
+                    }
 
                     // Wallet
                     if let Some(ref addr) = *wallet_address.read() {
@@ -234,12 +309,65 @@ pub fn Header() -> Element {
                             is_hero: false,
                         }
                     }
-                    Link { to: Route::HomePage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Home" }
-                    Link { to: Route::BlocksPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Blocks" }
-                    Link { to: Route::TransactionsPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Transactions" }
-                    Link { to: Route::EpochsPage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Epochs" }
-                    Link { to: Route::ConsensusPage { page: 0 }, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Consensus" }
-                    Link { to: Route::ValidatorsPage {}, class: "mobile-nav-link", onclick: move |_| menu_open.set(false), "Validators" }
+                    Link { to: Route::HomePage {}, class: mobile_nav_class("home"), onclick: move |_| menu_open.set(false),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }
+                            path { d:"M9 22V12h6v10" }
+                        }
+                        "Home"
+                    }
+                    Link { to: Route::BlocksPage { page: 0 }, class: mobile_nav_class("blocks"), onclick: move |_| menu_open.set(false),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }
+                            path { d:"M3.27 6.96 12 12.01l8.73-5.05" }
+                            path { d:"M12 22.08V12" }
+                        }
+                        "Blocks"
+                    }
+                    Link { to: Route::TransactionsPage { page: 0 }, class: mobile_nav_class("txs"), onclick: move |_| menu_open.set(false),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }
+                            path { d:"M14 2v6h6" }
+                            path { d:"M16 13H8" }
+                            path { d:"M16 17H8" }
+                            path { d:"M10 9H8" }
+                        }
+                        "Transactions"
+                    }
+                    Link { to: Route::EpochsPage {}, class: mobile_nav_class("epochs"), onclick: move |_| menu_open.set(false),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            circle { cx:"12", cy:"12", r:"10" }
+                            path { d:"M12 6v6l4 2" }
+                        }
+                        "Epochs"
+                    }
+                    Link { to: Route::ConsensusPage { page: 0 }, class: mobile_nav_class("consensus"), onclick: move |_| menu_open.set(false),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M21 12a9 9 0 1 1-6.219-8.56" }
+                            path { d:"M21 3v6h-6" }
+                        }
+                        "Consensus"
+                    }
+                    Link { to: Route::ValidatorsPage {}, class: mobile_nav_class("validators"), onclick: move |_| menu_open.set(false),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"1.5", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }
+                            circle { cx:"9", cy:"7", r:"4" }
+                            path { d:"M23 21v-2a4 4 0 0 0-3-3.87" }
+                            path { d:"M16 3.13a4 4 0 0 1 0 7.75" }
+                        }
+                        "Validators"
+                    }
+                    a {
+                        class: "mobile-nav-link",
+                        href: "https://www.telcoin.network/faucet",
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        onclick: move |_| menu_open.set(false),
+                        svg { class: "nav-icon", width:"14", height:"14", view_box:"0 0 24 24", fill:"none", stroke:"currentColor", stroke_width:"2", stroke_linecap:"round", stroke_linejoin:"round",
+                            path { d:"M12 2.69s-5.5 5.79-5.5 10.31a5.5 5.5 0 0 0 11 0c0-4.52-5.5-10.31-5.5-10.31z" }
+                        }
+                        "Faucet"
+                    }
                     if let Some(ref addr) = *wallet_address.read() {
                         div { class: "mobile-menu-wallet",
                             span { class: "wallet-dot" }
