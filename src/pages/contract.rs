@@ -878,7 +878,11 @@ pub fn ContractPage(address: String) -> Element {
                             div { class: "detail-panel-title",
                                 "ABI Upload"
                                 span { style: "font-size:11px; color:var(--text-muted); font-weight:400; margin-left:8px;",
-                                    "Paste ABI JSON to enable typed Read/Write functions"
+                                    if uploaded_abi.read().is_empty() {
+                                        "Paste ABI JSON to enable typed Read/Write functions"
+                                    } else {
+                                        "ABI loaded — paste a different one below to override (e.g. for a proxy's implementation contract)"
+                                    }
                                 }
                             }
                             div { style: "padding:16px 20px;",
