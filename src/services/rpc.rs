@@ -348,6 +348,84 @@ pub struct ApiEpochCertificate {
 }
 
 // ── HTTP plumbing — text-first parsing to preserve u128 precision ───────────
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SourcifyCompilation {
+    pub name:              Option<String>,
+    #[serde(rename = "compilerVersion")]
+    pub compiler_version:  Option<String>,
+    pub language:          Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourcifySourceFile {
+    pub content: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourcifyDeployment {
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: Option<String>,
+    #[serde(rename = "blockNumber")]
+    pub block_number:     Option<String>,
+    pub deployer:          Option<String>,
+}
+/// GET /v2/contract/{chainId}/{address} from Sourcify (https://sourcify.dev)
+/// -- an independent, third-party verification service, not our own
+/// indexer. A 200 response with every match field null is a normal
+/// "not verified" result, not an error.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SourcifyStatus {
+    /// "exact_match", "match", or null (unverified).
+    #[serde(rename = "match")]
+    pub match_type:      Option<String>,
+    #[serde(rename = "creationMatch")]
+    pub creation_match:  Option<String>,
+    #[serde(rename = "runtimeMatch")]
+    pub runtime_match:   Option<String>,
+    #[serde(rename = "verifiedAt")]
+    pub verified_at:     Option<String>,
+    #[serde(default)]
+    pub compilation:     Option<SourcifyCompilation>,
+    /// Standard ABI JSON array, when matched -- feed straight into
+    /// parse_abi_json() to unlock the interactive Read/Write Contract UI.
+    #[serde(default)]
+    pub abi:             Option<serde_json::Value>,
+    #[serde(default)]
+    pub sources:         Option<std::collections::HashMap<String, SourcifySourceFile>>,
+    #[serde(default)]
+    pub deployment:      Option<SourcifyDeployment>,
+}
+impl SourcifyStatus {
+    /// True if Sourcify has a verified match (full or partial) for this
+    /// contract -- the only field callers should branch on for a
+    /// verified/unverified badge.
+    pub fn is_verified(&self) -> bool {
+        self.match_type.is_some()
+    }
+}
+/// Chain ID for the Adiri Testnet, as registered with Sourcify.
+const SOURCIFY_CHAIN_ID: &str = "2017";
+/// Look up a contract's verification status on Sourcify. Network/parse
+/// failures are Err (best-effort caller should just hide the section);
+/// a confirmed "not verified" result is Ok(SourcifyStatus::default()),
+/// never an error.
+pub async fn get_sourcify_status(address: &str) -> Result<SourcifyStatus, String> {
+    use gloo_net::http::Request;
+    let url = format!(
+        "https://sourcify.dev/server/v2/contract/{SOURCIFY_CHAIN_ID}/{address}?fields=abi,compilation.name,compilation.compilerVersion,compilation.language,sources,deployment,verifiedAt"
+    );
+    let resp = Request::get(&url).send().await.map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    // Sourcify's REST design treats "verified contract data" as the
+    // resource: 404 is the NORMAL, expected status for "not verified" (a
+    // genuinely absent resource), still carrying a JSON body with every
+    // match field null. Only a body that fails to parse as SourcifyStatus
+    // at all -- regardless of status code -- is a real error here.
+    match serde_json::from_str::<SourcifyStatus>(&text) {
+        Ok(parsed) => Ok(parsed),
+        Err(e) => Err(format!("Sourcify {status}: parse error: {e}")),
+    }
+}
+
 async fn indexer_get<T: for<'de> Deserialize<'de>>(path: &str) -> Result<T, String> {
     use gloo_net::http::Request;
     let url = format!("{INDEXER_URL}{path}");

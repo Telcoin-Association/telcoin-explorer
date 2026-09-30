@@ -4,6 +4,7 @@ use crate::router::Route;
 use crate::services::rpc::{
     resolve_selectors, FunctionSignature,
     get_contract_info, get_address_transfers, contract_call, ContractInfo,
+    get_sourcify_status, SourcifyStatus,
     TokenTransfer, shorten_hash, shorten_addr, unix_to_age, format_wei_exact, format_token_amount,
     format_transfer_amount,
     CONSENSUS_REGISTRY, INDEXER_URL,
@@ -545,6 +546,7 @@ pub fn ContractPage(address: String) -> Element {
     let mut fn_errors:  Signal<std::collections::HashMap<String, String>>      = use_signal(|| std::collections::HashMap::new());
     let mut transfers_page: Signal<u64> = use_signal(|| 0);
     let mut transfers_more_loading      = use_signal(|| false);
+    let mut sourcify: Signal<Option<SourcifyStatus>> = use_signal(|| None);
     // Shared wallet-connection state from main.rs's context provider --
     // fully reactive, no localStorage polling or tab-switch re-check needed.
     let wallet_connected: Signal<Option<String>> = use_context();
@@ -563,6 +565,7 @@ pub fn ContractPage(address: String) -> Element {
         signatures.set(vec![]);
         uploaded_abi.set(vec![]);
         abi_msg.set(None);
+        sourcify.set(None);
         let saved_json = ls_load_abi(&address);
         if !saved_json.is_empty() {
             wasm_bindgen_futures::spawn_local(async move {
@@ -580,6 +583,41 @@ pub fn ContractPage(address: String) -> Element {
                     // (search box) to have torn down the app in the meantime.
                     if let Ok(mut w) = uploaded_abi.try_write() { *w = parsed; }
                     if let Ok(mut w) = abi_msg.try_write() { *w = Some((true, format!("{} functions loaded from saved ABI", n))); }
+                }
+            });
+        }
+        // Sourcify (independent third-party verification service) lookup --
+        // best-effort, never blocks the page. If verified and no manual/saved
+        // ABI is already loaded, feed Sourcify's real ABI through the same
+        // parse_abi_json() path the manual-upload flow uses, so verified
+        // contracts get the interactive Read/Write UI automatically.
+        {
+            let address_sc = address.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(status) = get_sourcify_status(&address_sc).await {
+                    let has_abi = status.abi.is_some();
+                    sourcify.set(Some(status.clone()));
+                    if has_abi {
+                        if let Some(abi_value) = &status.abi {
+                            let already_loaded = uploaded_abi.peek().len() > 0;
+                            if !already_loaded {
+                                if let Ok(json_str) = serde_json::to_string(abi_value) {
+                                    for _ in 0..20 {
+                                        let ready = js_sys::eval("typeof keccak256 === 'function'")
+                                            .ok().and_then(|v| v.as_bool()).unwrap_or(false);
+                                        if ready { break; }
+                                        gloo_timers::future::TimeoutFuture::new(100).await;
+                                    }
+                                    let parsed = parse_abi_json(&json_str);
+                                    if !parsed.is_empty() {
+                                        let n = parsed.len();
+                                        if let Ok(mut w) = uploaded_abi.try_write() { *w = parsed; }
+                                        if let Ok(mut w) = abi_msg.try_write() { *w = Some((true, format!("{} functions loaded from Sourcify (verified)", n))); }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -778,6 +816,58 @@ pub fn ContractPage(address: String) -> Element {
                                     div { class: "detail-val", style: "gap:8px;",
                                         Link { to: Route::ValidatorsPage {}, span { class: "action-link", "Validators →" } }
                                         Link { to: Route::EpochsPage {},     span { class: "action-link", style: "margin-left:12px;", "Epochs →" } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(status) = sourcify.read().as_ref() {
+                        div { class: "detail-panel",
+                            div { class: "detail-panel-title", "Sourcify Verification" }
+                            div { class: "detail-table",
+                                div { class: "detail-row",
+                                    div { class: "detail-key", "Status" }
+                                    div { class: "detail-val",
+                                        if status.is_verified() {
+                                            span { class: "chip success", "Verified" }
+                                        } else {
+                                            span { class: "chip pending", "Unverified" }
+                                        }
+                                    }
+                                }
+                                if let Some(comp) = &status.compilation {
+                                    if let Some(name) = &comp.name {
+                                        div { class: "detail-row",
+                                            div { class: "detail-key", "Contract Name" }
+                                            div { class: "detail-val", "{name}" }
+                                        }
+                                    }
+                                    if let Some(ver) = &comp.compiler_version {
+                                        div { class: "detail-row",
+                                            div { class: "detail-key", "Compiler" }
+                                            div { class: "detail-val mono-wrap", "{ver}" }
+                                        }
+                                    }
+                                }
+                                if status.is_verified() {
+                                    div { class: "detail-row",
+                                        div { class: "detail-key", "Source" }
+                                        div { class: "detail-val",
+                                            a {
+                                                href: "https://repo.sourcify.dev/2017/{address}",
+                                                target: "_blank",
+                                                rel: "noopener noreferrer",
+                                                class: "action-link",
+                                                "View on Sourcify →"
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    div { class: "detail-row",
+                                        div { class: "detail-key", "" }
+                                        div { class: "detail-val", style: "color:var(--text-muted); font-size:12px;",
+                                            "No source has been submitted to Sourcify for this contract yet."
+                                        }
                                     }
                                 }
                             }
